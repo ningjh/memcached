@@ -3,9 +3,10 @@
 package pool
 
 import (
-    "memcached/config"
-    "memcached/selector"
-    "memcached/factory"
+    "github.com/ningjh/memcached/config"
+    "github.com/ningjh/memcached/selector"
+    "github.com/ningjh/memcached/factory"
+    
     "net"
     "errors"
 )

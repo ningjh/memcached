@@ -3,7 +3,7 @@
 package config
 
 import (
-    "memcached/config"
+    "github.com/ningjh/memcached/config"
     "testing"
 )
 

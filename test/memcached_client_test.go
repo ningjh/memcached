@@ -1,8 +1,8 @@
 package test
 
 import (
-    "memcached"
-    "memcached/common"
+    "github.com/ningjh/memcached"
+    "github.com/ningjh/memcached/common"
 
     "testing"
 )

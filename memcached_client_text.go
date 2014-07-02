@@ -4,10 +4,10 @@ package memcached
 import (
     "fmt"
 
-    "memcached/pool"
-    "memcached/config"
-    "memcached/parse"
-    "memcached/common"
+    "github.com/ningjh/memcached/pool"
+    "github.com/ningjh/memcached/config"
+    "github.com/ningjh/memcached/parse"
+    "github.com/ningjh/memcached/common"
 )
 
 // MemcachedClient4T implements the text protocol.

@@ -4,7 +4,7 @@ package selector
 
 import (
     "testing"
-    "memcached/selector"
+    "github.com/ningjh/memcached/selector"
 )
 
 var servers1 []string

@@ -6,9 +6,9 @@ import (
     "testing"
     "fmt"
 
-    "memcached/pool"
-    "memcached/config"
-    "memcached/parse"
+    "github.com/ningjh/memcached/pool"
+    "github.com/ningjh/memcached/config"
+    "github.com/ningjh/memcached/parse"
 )
 
 func new() *parse.TextProtocolParse {

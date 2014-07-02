@@ -9,11 +9,11 @@ import (
     "strings"
     "strconv"
 
-    "memcached/factory"
-    "memcached/pool"
-    "memcached/common"
-    "memcached/selector"
-    "memcached/config"
+    "github.com/ningjh/memcached/factory"
+    "github.com/ningjh/memcached/pool"
+    "github.com/ningjh/memcached/common"
+    "github.com/ningjh/memcached/selector"
+    "github.com/ningjh/memcached/config"
 )
 
 var (
