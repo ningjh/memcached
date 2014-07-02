@@ -3,7 +3,7 @@
 package factory
 
 import (
-    "memcached/factory"
+    "github.com/ningjh/memcached/factory"
     "testing"
 )
 

@@ -4,7 +4,7 @@ package selector
 
 import(
     "testing"
-    "memcached/selector"
+    "github.com/ningjh/memcached/selector"
 )
 
 var servers []string = []string{"127.0.0.1:8080", "127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083", "127.0.0.1:8084", "127.0.0.1:8085", "127.0.0.1:8086", "127.0.0.1:8087"}
