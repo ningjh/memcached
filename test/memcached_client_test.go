@@ -31,7 +31,7 @@ func TestSet(t *testing.T) {
 
 func TestAdd(t *testing.T) {
 	e := &common.Element{
-		Key   : "test3",
+		Key   : "test4",
 		Value : []byte("ningjiahong"),
 	}
 
