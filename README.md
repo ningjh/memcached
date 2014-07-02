@@ -50,3 +50,5 @@ if items != nil {
     }
 }
 ```
+[More Examples]
+[More Examples]: https://github.com/ningjh/memcached/blob/master/test/memcached_client_test.go "More Examples"
