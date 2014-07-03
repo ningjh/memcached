@@ -1,17 +1,23 @@
 package factory
 
 import (
+    "github.com/ningjh/memcached/common"
+
     "net"
+    "bufio"
 )
 
-func NewTcpConnection(addr string) (net.Conn, error) {
-    return net.Dial("tcp", addr)
-}
+func NewTcpConnect(addr string) (*common.Conn, error) {
+	tcpConn, err := net.Dial("tcp", addr)
 
-func CloseTcpConnection(conn net.Conn) error {
-	if conn != nil {
-        return conn.Close()
-    }
+	if err == nil {
+        conn := &common.Conn{
+        	Conn : tcpConn,
+        	RW   : bufio.NewReadWriter(bufio.NewReader(tcpConn), bufio.NewWriter(tcpConn)),
+        }
 
-    return nil
+        return conn, err
+	}
+
+	return nil, err
 }
