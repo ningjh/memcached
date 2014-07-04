@@ -8,7 +8,6 @@ import (
     "github.com/ningjh/memcached/factory"
     "github.com/ningjh/memcached/common"
     
-    "net"
     "errors"
 )
 

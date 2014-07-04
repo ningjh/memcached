@@ -1,9 +1,6 @@
 package config
 
-import (
-    "time"
-)
-
+// Config the connection pool configuration.
 type Config struct {
 	Servers      []string    //memcached servers
 	InitConns    uint16      //connect pool size of each server
