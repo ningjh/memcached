@@ -19,18 +19,18 @@ var (
 )
 
 type TextProtocolParse struct {
-    Pool   pool.Pool
-    Config *config.Config
+    pool   pool.Pool
+    config *config.Config
 }
 
 func NewTextProtocolParse(p pool.Pool, c *config.Config) *TextProtocolParse {
-    return &TextProtocolParse {Pool : p, Config : c}
+    return &TextProtocolParse {pool : p, config : c}
 }
 
 // Store ask the server to store some data identified by a key
 func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, exptime int64, cas uint64, value []byte) error {
     // get a connect from the pool
-    conn, err := parse.Pool.Get(key)
+    conn, err := parse.pool.Get(key)
     if err != nil {
         return err
     }
@@ -76,7 +76,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
     // if a key has the same index, they will put together.
     for _, key := range keys {
         // calculate the key's index
-        index, err := selector.SelectServer(parse.Config.Servers, key)
+        index, err := selector.SelectServer(parse.config.Servers, key)
 
         if err != nil {
             return items, err
@@ -94,7 +94,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
     // send the get or gets command line, and parse response
     for i, ks := range keyMap {
         // get connect by key's index
-        conn, err := parse.Pool.GetByIndex(i)
+        conn, err := parse.pool.GetByIndex(i)
         if err != nil {
             return items, err
         }
@@ -130,6 +130,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
                         item.TFlags = uint32(flags)                        
                     }
 
+                    // read value
                     if dataLen, err := strconv.ParseUint(params[3], 10, 64); err == nil {
                         for k := uint64(0); k < dataLen; k++ {
                             if c, err := conn.ReadByte(); err == nil {
@@ -175,7 +176,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
 // Deletion delete the item with key
 func (parse *TextProtocolParse) Deletion(key string) error {
     // get a connect from the pool
-    conn, err := parse.Pool.Get(key)
+    conn, err := parse.pool.Get(key)
     if err != nil {
         return err
     }
@@ -207,7 +208,7 @@ func (parse *TextProtocolParse) Deletion(key string) error {
 // IncrOrDecr increment or decrement an item, and return new value of the item's data
 func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64) (uint64, error) {
     // get a connect from the pool
-    conn, err := parse.Pool.Get(key)
+    conn, err := parse.pool.Get(key)
     if err != nil {
         return 0, err
     }
@@ -243,7 +244,7 @@ func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64)
 // Touch touch an item
 func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
     // get a connect from the pool
-    conn, err := parse.Pool.Get(key)
+    conn, err := parse.pool.Get(key)
     if err != nil {
         return err
     }
@@ -275,18 +276,18 @@ func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
 func (parse *TextProtocolParse) release(key string, conn *common.Conn, isClose bool) {
     if isClose {
         go conn.Close()
-        go parse.Pool.Release(key, nil)
+        go parse.pool.Release(key, nil)
     } else {
-        go parse.Pool.Release(key, conn)
+        go parse.pool.Release(key, conn)
     }
 }
 
 func (parse *TextProtocolParse) releaseByIndex(i uint32, conn *common.Conn, isClose bool) {
     if isClose {
         go conn.Close()
-        go parse.Pool.ReleaseByIndex(i, nil)
+        go parse.pool.ReleaseByIndex(i, nil)
     } else {
-        go parse.Pool.ReleaseByIndex(i, conn)
+        go parse.pool.ReleaseByIndex(i, conn)
     }
 }
 
