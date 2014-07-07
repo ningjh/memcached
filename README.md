@@ -16,7 +16,16 @@ import (
 )
 
 // create a memcached client
-var memcachedClient, err = memcached.NewMemcachedClient4T("127.0.0.1:11211", "127.0.0.1:11212")
+var conf = &config.Config{
+    Servers      : []string{"127.0.0.1:11211", "127.0.0.1:11212"},
+    InitConns    : 10,    //connection pool size
+    ReadTimeout  : 3000,  //connection read timeout, 3 seconds
+    WriteTimeout : 3000,  //connection write timeout, 3 seconds
+}
+var memcachedClient, err = memcached.NewMemcachedClient4T(conf)
+if err != nil {
+    //something wrong.
+}
 
 // set an item
 var element = &common.Element{
