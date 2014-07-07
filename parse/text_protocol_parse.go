@@ -19,7 +19,7 @@ var (
 )
 
 type TextProtocolParse struct {
-	Pool   pool.Pool
+    Pool   pool.Pool
     Config *config.Config
 }
 
@@ -32,7 +32,7 @@ func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, expt
     // get a connect from the pool
     conn, err := parse.Pool.Get(key)
     if err != nil {
-    	return err
+        return err
     }
 
     // create command

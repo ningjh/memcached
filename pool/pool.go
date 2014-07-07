@@ -12,15 +12,15 @@ import (
 )
 
 type Pool interface {
-	Get(string) (*common.Conn, error)
+    Get(string) (*common.Conn, error)
     GetByIndex(uint32) (*common.Conn, error)
-	Release(string, *common.Conn)
+    Release(string, *common.Conn)
     ReleaseByIndex(uint32, *common.Conn)
 }
 
 type ConnectionPool struct {
-	pools   []chan *common.Conn
-	config  *config.Config
+    pools   []chan *common.Conn
+    config  *config.Config
     factory *factory.ConnectionFactory
 }
 
@@ -66,7 +66,7 @@ func (pool *ConnectionPool) Get(key string) (*common.Conn, error) {
     i, err := selector.SelectServer(pool.config.Servers, key)
 
     if err != nil {
-    	return nil, err
+        return nil, err
     }
 
     return pool.GetByIndex(i)
@@ -91,7 +91,7 @@ func (pool *ConnectionPool) ReleaseByIndex(i uint32, conn *common.Conn) {
 
 // Release put connect back to the pool
 func (pool *ConnectionPool) Release(key string, conn *common.Conn) {
-	i, err := selector.SelectServer(pool.config.Servers, key)
+    i, err := selector.SelectServer(pool.config.Servers, key)
 
     if err == nil {
         pool.ReleaseByIndex(i, conn)

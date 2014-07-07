@@ -15,13 +15,13 @@ type ConnectionFactory struct {
 
 // NewTcpConnect create a tcp connection
 func (cf *ConnectionFactory) NewTcpConnect(addr string) (conn *common.Conn, err error) {
-	tcpConn, err := net.Dial("tcp", addr)
+    tcpConn, err := net.Dial("tcp", addr)
 
-	if err == nil {
+    if err == nil {
         conn = common.NewConn(tcpConn, bufio.NewReadWriter(bufio.NewReader(tcpConn), bufio.NewWriter(tcpConn)), cf.config)
-	}
+    }
 
-	return
+    return
 }
 
 // NewConnectionFactory create a connection factory
