@@ -2,14 +2,10 @@
 package parse
 
 import (
-    "net"
     "fmt"
-    "bufio"
-    "bytes"
     "strings"
     "strconv"
 
-    "github.com/ningjh/memcached/factory"
     "github.com/ningjh/memcached/pool"
     "github.com/ningjh/memcached/common"
     "github.com/ningjh/memcached/selector"
@@ -18,12 +14,8 @@ import (
 
 var (
     crlf       = "\r\n"
+    lf byte    = '\n'
     whitespace = " "
-    stored     = []byte("STORED\r\n")
-    end        = []byte("END\r\n")
-    deleted    = []byte("DELETED\r\n")
-    touched    = []byte("TOUCHED\r\n")
-    notFound   = []byte("NOT_FOUND\r\n")
 )
 
 type TextProtocolParse struct {
@@ -36,73 +28,42 @@ func NewTextProtocolParse(p pool.Pool, c *config.Config) *TextProtocolParse {
 }
 
 // Store ask the server to store some data identified by a key
-func (parse *TextProtocolParse) Store(opr string, key string, flag uint32, exptime int64, cas uint64, value []byte) error {
+func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, exptime int64, cas uint64, value []byte) error {
     // get a connect from the pool
-    conn, err := parse.getConn(key)
+    conn, err := parse.Pool.Get(key)
     if err != nil {
     	return err
     }
 
-    rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+    // create command
+    command := createCommand(opr, key, flags, exptime, cas, len(value))
 
-    var command []byte
+    // merge all datas
+    data    := mergeBytes(command, value, []byte(crlf))
 
-    if opr == "cas" {
-        command = []byte(fmt.Sprintf("%s %s %d %d %d %d %s", opr, key, flag, exptime, len(value), cas, crlf))
-    } else {
-        command = []byte(fmt.Sprintf("%s %s %d %d %d %s", opr, key, flag, exptime, len(value), crlf))
-    }
-
-    // send command line to server
-    if _, err := rw.Write(command); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
-        return err
-    }
-
-    // send the data to server
-    if _, err := rw.Write(value); err != nil {
-    	go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
-        return err
-    }
-
-    // end with '\r\n'
-    if _, err := rw.Write([]byte(crlf)); err != nil {
-    	go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
-        return err
-    }
-
-    if err := rw.Flush(); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+    // send datas to memcached server
+    if _, err := conn.Write(data); err != nil {
+        parse.release(key, conn, true)
         return err
     }
     
     // parse the response from server
-    response, err := rw.ReadSlice('\n')
+    response, err := conn.ReadString(lf)
     if err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+        parse.release(key, conn, true)
         return err
     }
 
-    switch {
-        case bytes.Equal(response, stored) :
-            err = nil
-        default :
-            err = fmt.Errorf("%q", string(response[:len(response) - 2]))
-    }
+    err = checkError(response)
 
     // put the connect back to the pool
-    go parse.releaseConn(key, conn)
+    parse.release(key, conn, false)
 
     return err
 }
 
 // Retrieval retrieve data from server
-func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[string]common.Item) {
+func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[string]common.Item, err error) {
     // result set
     items = make(map[string]common.Item)
 
@@ -118,7 +79,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
         index, err := selector.SelectServer(parse.Config.Servers, key)
 
         if err != nil {
-            return
+            return items, err
         }
 
         // same index, same slice
@@ -133,35 +94,34 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
     // send the get or gets command line, and parse response
     for i, ks := range keyMap {
         // get connect by key's index
-        conn, err := parse.getConnByIndex(i)
+        conn, err := parse.Pool.GetByIndex(i)
         if err != nil {
-            return
+            return items, err
         }
 
-        rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+        // create command
+        command := createCommand(opr, strings.Join(ks, whitespace), nil, nil, nil, nil)
 
-        command := []byte(fmt.Sprintf("%s %s %s", opr, strings.Join(ks, whitespace), crlf))
-
-        if _, err := rw.Write(command); err != nil {
-            go parse.closeConn(conn)
-            go parse.releaseConnByIndex(i, nil)
-            return
-        }
-
-        if err := rw.Flush(); err != nil {
-            go parse.closeConn(conn)
-            go parse.releaseConnByIndex(i, nil)
-            return
+        // send datas to memcached server
+        if _, err := conn.Write(command); err != nil {
+            parse.releaseByIndex(i, conn, true)
+            return items, err
         }
 
         // parse response
         for {
-            line, err := rw.ReadBytes('\n')
-            if err == nil {
-                if bytes.Equal(line, end) {
+            if line, err := conn.ReadString(lf); err == nil {
+                if err = checkError(line); err != nil {
+                    parse.releaseByIndex(i, conn, true)
+                    return items, err
+                }
+
+                line = strings.Replace(line, crlf, "", -1)
+
+                if line == "END" {
                     break
                 } else {
-                    params := strings.Split(string(line[:len(line) - 2]), whitespace)
+                    params := strings.Split(line, whitespace)
                     item   := new(common.TextItem)
 
                     item.TKey = params[1]
@@ -171,15 +131,24 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
                     }
 
                     if dataLen, err := strconv.ParseUint(params[3], 10, 64); err == nil {
-                        for i := uint64(0); i < dataLen; i++ {
-                            if c, err := rw.ReadByte(); err == nil {
+                        for k := uint64(0); k < dataLen; k++ {
+                            if c, err := conn.ReadByte(); err == nil {
                                 item.TValue = append(item.TValue, c)
                             } else {
-                                return
+                                parse.releaseByIndex(i, conn, true)
+                                return items, err
                             }
                         }
-                        rw.ReadByte()  //read '\r'
-                        rw.ReadByte()  //read '\n'
+
+                        if _, err = conn.ReadByte(); err != nil {  //read '\r'
+                            parse.releaseByIndex(i, conn, true)
+                            return items, err
+                        }
+
+                        if _, err = conn.ReadByte(); err != nil {  //read '\n'
+                            parse.releaseByIndex(i, conn, true)
+                            return items, err
+                        }
                     }
 
                     if len(params) == 5 {
@@ -191,12 +160,13 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
                     items[item.TKey] = item
                 }
             } else {
-                break
+                parse.releaseByIndex(i, conn, true)
+                return items, err
             }
         }
 
         // put the connect back to the pool
-        go parse.releaseConnByIndex(i, conn)
+        parse.releaseByIndex(i, conn, false)
     }
 
     return
@@ -204,87 +174,67 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
 
 // Deletion delete the item with key
 func (parse *TextProtocolParse) Deletion(key string) error {
-    conn, err := parse.getConn(key)
+    // get a connect from the pool
+    conn, err := parse.Pool.Get(key)
     if err != nil {
         return err
     }
 
-    rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+    // create command
+    command := createCommand("delete", key, nil, nil, nil, nil)
 
-    var command []byte = []byte(fmt.Sprintf("delete %s %s", key, crlf))
-
-    if _, err := rw.Write(command); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+    // send datas to memcached server
+    if _, err := conn.Write(command); err != nil {
+        parse.release(key, conn, true)
         return err
     }
 
-    if err := rw.Flush(); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
-        return err
-    }
-
-    response, err := rw.ReadSlice('\n')
+    // parse the response from server
+    response, err := conn.ReadString(lf)
     if err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+        parse.release(key, conn, true)
         return err
     }
 
-    switch {
-        case bytes.Equal(response, deleted) :
-            err = nil
-        default :
-            err = fmt.Errorf("%q", string(response[:len(response) - 2]))
-    }
+    err = checkError(response)
 
-    go parse.releaseConn(key, conn)
+    // put the connect back to the pool
+    parse.release(key, conn, false)
 
     return err
 }
 
 // IncrOrDecr increment or decrement an item, and return new value of the item's data
 func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64) (uint64, error) {
-    conn, err := parse.getConn(key)
+    // get a connect from the pool
+    conn, err := parse.Pool.Get(key)
     if err != nil {
         return 0, err
     }
 
-    rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+    // create command
+    command := createCommand(opr, key, nil, nil, nil, value)
 
-    var command []byte = []byte(fmt.Sprintf("%s %s %d %s", opr, key, value, crlf))
-
-    if _, err := rw.Write(command); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+    // send datas to memcached server
+    if _, err := conn.Write(command); err != nil {
+        parse.release(key, conn, true)
         return 0, err
     }
 
-    if err := rw.Flush(); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
-        return 0, err
-    }
-
-    response, err := rw.ReadSlice('\n')
+    // parse the response from server
+    response, err := conn.ReadString(lf)
     if err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+        parse.release(key, conn, true)
         return 0, err
     }
 
-    switch {
-        case bytes.Equal(response, notFound) :
-            err = fmt.Errorf("%q", string(response[:len(response) - 2]))
-        default :
-            err = nil
-    }
+    err = checkError(response)
 
-    go parse.releaseConn(key, conn)
+    // put the connect back to the pool
+    parse.release(key, conn, false)
 
     if err == nil {
-        return strconv.ParseUint(string(response[:len(response) - 2]), 10, 64)
+        return strconv.ParseUint(strings.Replace(response, crlf, "", -1), 10, 64)
     } else {
         return 0, err
     }
@@ -292,62 +242,111 @@ func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64)
 
 // Touch touch an item
 func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
-    conn, err := parse.getConn(key)
+    // get a connect from the pool
+    conn, err := parse.Pool.Get(key)
     if err != nil {
         return err
     }
 
-    rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+    // create command
+    command := createCommand("touch", key, nil, exptime, nil, nil)
 
-    var command []byte = []byte(fmt.Sprintf("touch %s %d %s", key, exptime, crlf))
-
-    if _, err := rw.Write(command); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+    // send datas to memcached server
+    if _, err := conn.Write(command); err != nil {
+        parse.release(key, conn, true)
         return err
     }
 
-    if err := rw.Flush(); err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
-        return err
-    }
-    
-    response, err := rw.ReadSlice('\n')
+    // parse the response from server
+    response, err := conn.ReadString(lf)
     if err != nil {
-        go parse.closeConn(conn)
-        go parse.releaseConn(key, nil)
+        parse.release(key, conn, true)
         return err
     }
 
-    switch {
-        case bytes.Equal(response, touched) :
-            err = nil
-        default :
-            err = fmt.Errorf("%q", string(response[:len(response) - 2]))
-    }
+    err = checkError(response)
 
-    go parse.releaseConn(key, conn)
+    // put the connect back to the pool
+    parse.release(key, conn, false)
 
     return err
 }
 
-func (parse *TextProtocolParse) closeConn(conn net.Conn) {
-    factory.CloseTcpConnection(conn)
+func (parse *TextProtocolParse) release(key string, conn *common.Conn, isClose bool) {
+    if isClose {
+        go conn.Close()
+        go parse.Pool.Release(key, nil)
+    } else {
+        go parse.Pool.Release(key, conn)
+    }
 }
 
-func (parse *TextProtocolParse) getConn(key string) (net.Conn, error) {
-	return parse.Pool.Get(key)
+func (parse *TextProtocolParse) releaseByIndex(i uint32, conn *common.Conn, isClose bool) {
+    if isClose {
+        go conn.Close()
+        go parse.Pool.ReleaseByIndex(i, nil)
+    } else {
+        go parse.Pool.ReleaseByIndex(i, conn)
+    }
 }
 
-func (parse *TextProtocolParse) getConnByIndex(i uint32) (net.Conn, error) {
-    return parse.Pool.GetByIndex(i)
+func checkError(s string) (err error) {
+    if len(strings.Trim(s, whitespace)) == 0 {
+        err = fmt.Errorf("Memcached : empty value error")
+        return
+    }
+
+    result := strings.Split(strings.Replace(s, crlf, "", -1), whitespace)
+
+    switch result[0] {
+        case "ERROR" :
+            err = fmt.Errorf("Memcached : nonexistent command name")
+        case "CLIENT_ERROR" :
+            err = fmt.Errorf("Memcached : %s", result[1])
+        case "SERVER_ERROR" :
+            err = fmt.Errorf("Memcached : %s", result[1])
+        case "NOT_STORED" :
+            err = fmt.Errorf("Memcached : the command wasn't met")
+        case "EXISTS" :
+            err = fmt.Errorf("Memcached : the item has been modified since you last fetched it")
+        case "NOT_FOUND" :
+            err = fmt.Errorf("Memcached : the item did not exist")
+    }
+
+    return
 }
 
-func (parse *TextProtocolParse) releaseConn(key string, conn net.Conn) {
-    parse.Pool.Release(key, conn)
+func createCommand(opr string, key, flags, exptime, cas, value interface{}) (command []byte) {
+    switch opr {
+        case "set", "add", "replace", "append", "prepend" :
+            command = []byte(fmt.Sprintf("%s %s %d %d %d %s", opr, key, flags, exptime, value, crlf))
+        case "cas" :
+            command = []byte(fmt.Sprintf("%s %s %d %d %d %d %s", opr, key, flags, exptime, value, cas, crlf))
+        case "get", "gets" :
+            command = []byte(fmt.Sprintf("%s %s %s", opr, key, crlf))
+        case "delete" :
+            command = []byte(fmt.Sprintf("%s %s %s", opr, key, crlf))
+        case "incr", "decr" :
+            command = []byte(fmt.Sprintf("%s %s %d %s", opr, key, value, crlf))
+        case "touch" :
+            command = []byte(fmt.Sprintf("%s %s %d %s", opr, key, exptime, crlf))
+    }
+
+    return
 }
 
-func (parse *TextProtocolParse) releaseConnByIndex(i uint32, conn net.Conn) {
-    parse.Pool.ReleaseByIndex(i, conn)
+func mergeBytes(bs ...[]byte) []byte {
+    var l, n int = 0, 0
+
+    for _, v := range bs {
+        l += len(v)
+    }
+
+    var buffer = make([]byte, l)
+
+    for _, v := range bs {
+        n += copy(buffer[n:], v)
+    }
+
+    return buffer
 }

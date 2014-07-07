@@ -1,14 +1,11 @@
 package config
 
-import (
-    "time"
-)
-
+// Config the connection pool configuration.
 type Config struct {
 	Servers      []string    //memcached servers
 	InitConns    uint16      //connect pool size of each server
-	ReadTimeout  time.Time
-	WriteTimeout time.Time
+	ReadTimeout  int64       //Millisecond
+	WriteTimeout int64       //Millisecond
 }
 
 func New() *Config {

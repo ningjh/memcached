@@ -16,9 +16,15 @@ type MemcachedClient4T struct {
 }
 
 // NewMemcachedClient4T return a client that implements the text protocol.
-func NewMemcachedClient4T(servers ...string) (*MemcachedClient4T, error) {
-	c := config.New()
-	c.Servers = servers
+func NewMemcachedClient4T(c *config.Config) (*MemcachedClient4T, error) {
+    fmt.Printf("%+v", c)
+    if len(c.Servers) == 0 {
+        return nil, fmt.Errorf("Servers must not empty")
+    }
+
+    if c.InitConns <= 0 {
+        c.InitConns = 10
+    }
 
 	p, err := pool.New(c)
 	if err != nil {
@@ -63,44 +69,60 @@ func (client *MemcachedClient4T) Cas(e *common.Element) error {
     return client.store("cas", e)
 }
 
-func (client *MemcachedClient4T) Get(key string) common.Item {
-    items := client.parse.Retrieval("get", []string{key})
+func (client *MemcachedClient4T) Get(key string) (item common.Item, err error) {
+    items, err := client.parse.Retrieval("get", []string{key})
 
-    if len(items) > 0 {
-    	return items[key]
-    } else {
-    	return nil
+    if err == nil {
+        var ok bool
+        if item, ok = items[key]; !ok {
+            err = fmt.Errorf("no data error.")
+        }
     }
+
+    return
 }
 
-func (client *MemcachedClient4T) GetArray(keys []string) map[string]common.Item {
-    items := client.parse.Retrieval("get", keys)
+func (client *MemcachedClient4T) GetArray(keys []string) (items map[string]common.Item, err error) {
+    items, err = client.parse.Retrieval("get", keys)
 
-    if len(items) > 0 {
-    	return items
+    if err == nil {
+        if len(items) == 0 {
+            err   = fmt.Errorf("no data error.")
+            items = nil
+        }
     } else {
-    	return nil
+        items = nil
     }
+
+    return
 }
 
-func (client *MemcachedClient4T) Gets(key string) common.Item {
-    items := client.parse.Retrieval("gets", []string{key})
+func (client *MemcachedClient4T) Gets(key string) (item common.Item, err error) {
+    items, err := client.parse.Retrieval("gets", []string{key})
 
-    if len(items) > 0 {
-    	return items[key]
-    } else {
-    	return nil
+    if err == nil {
+        var ok bool
+        if item, ok = items[key]; !ok {
+            err = fmt.Errorf("no data error.")
+        }
     }
+
+    return
 }
 
-func (client *MemcachedClient4T) GetsArray(keys []string) map[string]common.Item {
-    items := client.parse.Retrieval("gets", keys)
+func (client *MemcachedClient4T) GetsArray(keys []string) (items map[string]common.Item, err error) {
+    items, err = client.parse.Retrieval("gets", keys)
 
-    if len(items) > 0 {
-    	return items
+    if err == nil {
+        if len(items) == 0 {
+            err   = fmt.Errorf("no data error.")
+            items = nil
+        }
     } else {
-    	return nil
+        items = nil
     }
+
+    return
 }
 
 func (client *MemcachedClient4T) Delete(key string) error {

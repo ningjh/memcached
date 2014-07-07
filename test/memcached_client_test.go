@@ -3,16 +3,21 @@ package test
 import (
     "github.com/ningjh/memcached"
     "github.com/ningjh/memcached/common"
+    "github.com/ningjh/memcached/config"
 
     "testing"
 )
 
-var clientT, _ = memcached.NewMemcachedClient4T("127.0.0.1:11211")
+var conf = &config.Config{
+	Servers : []string{"127.0.0.1:11211"},
+}
+
+var clientT, _ = memcached.NewMemcachedClient4T(conf)
 
 func TestSet(t *testing.T) {
 	e := &common.Element{
 		Key   : "test1",
-		Value : []byte("ningjiahong"),
+		Value : []byte("memcached client test1"),
 	}
  
 	e2 := &common.Element{
@@ -32,7 +37,7 @@ func TestSet(t *testing.T) {
 func TestAdd(t *testing.T) {
 	e := &common.Element{
 		Key   : "test4",
-		Value : []byte("ningjiahong"),
+		Value : []byte("memcached client test4"),
 	}
 
 	if err := clientT.Add(e); err != nil {
@@ -43,7 +48,7 @@ func TestAdd(t *testing.T) {
 func TestReplace(t *testing.T) {
 	e := &common.Element{
 		Key   : "test1",
-		Value : []byte("ningjiahong123"),
+		Value : []byte("memcached client test1 replace"),
 	}
 
 	if err := clientT.Replace(e); err != nil {
@@ -73,8 +78,48 @@ func TestPrepend(t *testing.T) {
 	}
 }
 
+func TestGet(t *testing.T) {
+    if item, err := clientT.Get("test1"); err == nil {
+    	t.Logf("%+v", item)
+    	t.Logf("%s", string(item.Value()))
+    } else {
+    	t.Errorf("no value")
+    }
+}
+
+func TestGetArray(t *testing.T) {
+    if items, err := clientT.GetArray([]string{"test1", "test2"}); err == nil {
+    	for _, v := range items {
+    		t.Logf("%+v", v)
+    		t.Logf("%s", string(v.Value()))
+    	}
+    } else {
+    	t.Errorf("no value")
+    }
+}
+
+func TestGets(t *testing.T) {
+    if item, err := clientT.Gets("test1"); err == nil {
+    	t.Logf("%+v", item)
+    	t.Logf("%s", string(item.Value()))
+    } else {
+    	t.Errorf("no value")
+    }
+}
+
+func TestGetsArray(t *testing.T) {
+    if items, err := clientT.GetsArray([]string{"test1", "test2"}); err == nil {
+    	for _, v := range items {
+    		t.Logf("%+v", v)
+    		t.Logf("%s", string(v.Value()))
+    	}
+    } else {
+    	t.Errorf("no value")
+    }
+}
+
 func TestCas(t *testing.T) {
-    item := clientT.Gets("test1")
+    item, _ := clientT.Gets("test1")
 
 	e := &common.Element{
 		Key   : "test1",
@@ -85,42 +130,6 @@ func TestCas(t *testing.T) {
 	if err := clientT.Cas(e); err != nil {
 		t.Errorf("%s", err)
 	}
-}
-
-func TestGet(t *testing.T) {
-    if item := clientT.Get("test1"); item != nil {
-    	t.Logf("%+v", item)
-    } else {
-    	t.Errorf("no value")
-    }
-}
-
-func TestGetArray(t *testing.T) {
-    if items := clientT.GetArray([]string{"test1", "test2"}); items != nil {
-    	for _, v := range items {
-    		t.Logf("%+v", v)
-    	}
-    } else {
-    	t.Errorf("no value")
-    }
-}
-
-func TestGets(t *testing.T) {
-    if item := clientT.Gets("test1"); item != nil {
-    	t.Logf("%+v", item)
-    } else {
-    	t.Errorf("no value")
-    }
-}
-
-func TestGetsArray(t *testing.T) {
-    if items := clientT.GetsArray([]string{"test1", "test2"}); items != nil {
-    	for _, v := range items {
-    		t.Logf("%+v", v)
-    	}
-    } else {
-    	t.Errorf("no value")
-    }
 }
 
 func TestDelete(t *testing.T) {
