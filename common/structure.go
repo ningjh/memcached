@@ -57,6 +57,14 @@ type Conn struct {
 	config *config.Config
 }
 
+func NewConn(conn net.Conn, rw *bufio.ReadWriter, c *config.Config) *Conn {
+	return &Conn{
+		Conn   : conn,
+		RW     : rw,
+		config : c,
+	}
+}
+
 func (c *Conn) Write(p []byte) (n int, err error) {
     c.SetWriteTimeout()
 

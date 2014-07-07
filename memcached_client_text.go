@@ -17,6 +17,15 @@ type MemcachedClient4T struct {
 
 // NewMemcachedClient4T return a client that implements the text protocol.
 func NewMemcachedClient4T(c *config.Config) (*MemcachedClient4T, error) {
+    fmt.Printf("%+v", c)
+    if len(c.Servers) == 0 {
+        return nil, fmt.Errorf("Servers must not empty")
+    }
+
+    if c.InitConns <= 0 {
+        c.InitConns = 10
+    }
+
 	p, err := pool.New(c)
 	if err != nil {
 		return nil, err

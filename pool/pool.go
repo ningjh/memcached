@@ -21,20 +21,22 @@ type Pool interface {
 type ConnectionPool struct {
 	pools   []chan *common.Conn
 	config  *config.Config
+    factory *factory.ConnectionFactory
 }
 
 // return a ConnectionPool instance, and for each server initializes a connection pool
 func New(config *config.Config) (Pool, error) {
     pool := &ConnectionPool{
-        pools  : make([]chan *common.Conn, 0, len(config.Servers)),
-        config : config,
+        pools   : make([]chan *common.Conn, 0, len(config.Servers)),
+        config  : config,
+        factory : factory.NewConnectionFactory(config),
     }
 
     for i := 0; i < len(pool.config.Servers); i++ {
         pool.pools = append(pool.pools, make(chan *common.Conn, pool.config.InitConns))
 
         for j := 0; j < int(pool.config.InitConns); j++ {
-            conn, err := factory.NewTcpConnect(pool.config.Servers[i])
+            conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i])
 
             if err != nil {
                 return nil, err
@@ -77,7 +79,7 @@ func (pool *ConnectionPool) ReleaseByIndex(i uint32, conn *common.Conn) {
     }
 
     if conn == nil {
-        conn, err := factory.NewTcpConnect(pool.config.Servers[i])
+        conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i])
 
         if err == nil {
             pool.pools[i] <- conn

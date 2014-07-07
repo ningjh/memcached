@@ -11,6 +11,7 @@ import (
 var conf = &config.Config{
 	Servers : []string{"127.0.0.1:11211"},
 }
+
 var clientT, _ = memcached.NewMemcachedClient4T(conf)
 
 func TestSet(t *testing.T) {
@@ -80,6 +81,7 @@ func TestPrepend(t *testing.T) {
 func TestGet(t *testing.T) {
     if item, err := clientT.Get("test1"); err == nil {
     	t.Logf("%+v", item)
+    	t.Logf("%s", string(item.Value()))
     } else {
     	t.Errorf("no value")
     }
@@ -89,6 +91,7 @@ func TestGetArray(t *testing.T) {
     if items, err := clientT.GetArray([]string{"test1", "test2"}); err == nil {
     	for _, v := range items {
     		t.Logf("%+v", v)
+    		t.Logf("%s", string(v.Value()))
     	}
     } else {
     	t.Errorf("no value")
@@ -98,6 +101,7 @@ func TestGetArray(t *testing.T) {
 func TestGets(t *testing.T) {
     if item, err := clientT.Gets("test1"); err == nil {
     	t.Logf("%+v", item)
+    	t.Logf("%s", string(item.Value()))
     } else {
     	t.Errorf("no value")
     }
@@ -107,6 +111,7 @@ func TestGetsArray(t *testing.T) {
     if items, err := clientT.GetsArray([]string{"test1", "test2"}); err == nil {
     	for _, v := range items {
     		t.Logf("%+v", v)
+    		t.Logf("%s", string(v.Value()))
     	}
     } else {
     	t.Errorf("no value")
@@ -126,12 +131,12 @@ func TestCas(t *testing.T) {
 		t.Errorf("%s", err)
 	}
 }
-
+/*
 func TestDelete(t *testing.T) {
     if err := clientT.Delete("test1"); err != nil {
     	t.Errorf("%s", err)
     }
-}
+}*/
 
 func TestIncr(t *testing.T) {
     if v, err := clientT.Incr("test2", 5); err != nil {
