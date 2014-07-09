@@ -11,6 +11,7 @@ $ go get github.com/ningjh/memcached
 import (
     "github.com/ningjh/memcached"
     "github.com/ningjh/memcached/common"
+    "github.com/ningjh/memcached/config"
     
     "fmt"
 )
