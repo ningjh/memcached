@@ -9,16 +9,23 @@ import (
 func SelectServer(servers []string, key string) (index uint32, err error) {
     defer func(){
         if r := recover(); r != nil {
-            err = errors.New(r.(string))
+            switch t := r.(type) {
+                case error  :
+                    err = t
+                case string :
+                    err = errors.New(t)
+                default :
+                    err = errors.New("selector error: unknow runtime error")
+            }
         }
     }()
     
     if(len(servers) == 0) {
-        panic("servers must not empty.")
+        panic("selector error: servers must not empty")
     }
 
     if len(key) == 0 {
-        panic("key must not empty.")
+        panic("selector error: key must not empty")
     }
 
     hashCode := crc32.ChecksumIEEE([]byte(key))

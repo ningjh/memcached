@@ -1,3 +1,4 @@
+//execute 'go test -v memcached_client_test.go'
 package test
 
 import (
