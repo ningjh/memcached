@@ -62,3 +62,7 @@ if items != nil {
 ```
 [More Examples]
 [More Examples]: https://github.com/ningjh/memcached/blob/master/test/memcached_client_test.go "More Examples"
+
+##Document
+[document]
+[document]: http://godoc.org/github.com/ningjh/memcached "document"
