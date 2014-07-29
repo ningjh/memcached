@@ -38,8 +38,8 @@ var element = &common.Element{
 err = memcachedClient.Add(element)
 
 // get an item
-item := memcachedClient.Get("abcd")
-if item != nil {
+item, err := memcachedClient.Get("abcd")
+if err == nil {
     key   := item.Key()
     value := item.Value()
     flags := item.Flags()
@@ -48,8 +48,8 @@ if item != nil {
 
 // get items
 keys  := []string{"abc", "def", "ghi"}
-items := memcachedClient.GetArray(keys)
-if items != nil {
+items, err := memcachedClient.GetArray(keys)
+if err == nil {
     for _, key := range items {
         if item, ok := items[key]; ok {
             key   := item.Key()
