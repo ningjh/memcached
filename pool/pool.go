@@ -14,8 +14,7 @@ import (
 type Pool interface {
     Get(string) (*common.Conn, error)
     GetByIndex(uint32) (*common.Conn, error)
-    Release(string, *common.Conn)
-    ReleaseByIndex(uint32, *common.Conn)
+    Release(*common.Conn)
 }
 
 type ConnectionPool struct {
@@ -36,7 +35,7 @@ func New(config *config.Config) (Pool, error) {
         pool.pools = append(pool.pools, make(chan *common.Conn, pool.config.InitConns))
 
         for j := 0; j < int(pool.config.InitConns); j++ {
-            conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i])
+            conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i], uint32(i))
 
             if err != nil {
                 return nil, err
@@ -52,13 +51,31 @@ func New(config *config.Config) (Pool, error) {
 // GetByIndex get connect with key's index
 func (pool *ConnectionPool) GetByIndex(i uint32) (*common.Conn, error) {
     if i < 0 || i >= uint32(len(pool.pools)) {
-        return nil, errors.New("index out of range")
+        return nil, errors.New("Memcached: index out of range")
     }
 
-    select {
-        case conn := <- pool.pools[i] :
-            return conn, nil
+    conn, err := pool.get(i)
+
+    //if the Memcached server crash, choose another one.
+    if pool.config.Rehash {
+        var ok bool = false
+
+        if err == nil {
+            ok = conn.Connected()
+        }
+
+        if !ok {
+            for i = 0; i < uint32(len(pool.config.Servers)); i++ {
+                if conn, err = pool.get(i); err == nil {
+                    if conn.Connected() {
+                        break
+                    }
+                }
+            }
+        }
     }
+
+    return conn, err
 }
 
 // Get get connect with key
@@ -72,28 +89,26 @@ func (pool *ConnectionPool) Get(key string) (*common.Conn, error) {
     return pool.GetByIndex(i)
 }
 
-// ReleaseByIndex put connect back to the pool
-func (pool *ConnectionPool) ReleaseByIndex(i uint32, conn *common.Conn) {
-    if i < 0 || i >= uint32(len(pool.pools)) {
-        return
-    }
-
-    if conn == nil {
-        conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i])
-
-        if err == nil {
-            pool.pools[i] <- conn
-        }
-    } else {
-        pool.pools[i] <- conn
+// Release put connect back to the pool
+func (pool *ConnectionPool) Release(conn *common.Conn) {
+    if conn != nil {
+        pool.release(conn.Index, conn)
     }
 }
 
-// Release put connect back to the pool
-func (pool *ConnectionPool) Release(key string, conn *common.Conn) {
-    i, err := selector.SelectServer(pool.config.Servers, key)
+func (pool *ConnectionPool) get(i uint32) (*common.Conn, error) {
+    select {
+        case conn := <- pool.pools[i] :
+            return conn, nil
+        default :
+            return pool.factory.NewTcpConnect(pool.config.Servers[i], i)
+    }
+}
 
-    if err == nil {
-        pool.ReleaseByIndex(i, conn)
+func (pool *ConnectionPool) release(i uint32, conn *common.Conn) {
+    select {
+        case pool.pools[i] <- conn :
+        default :
+            conn.Close()
     }
 }

@@ -55,13 +55,15 @@ type Conn struct {
     Conn   net.Conn
     RW     *bufio.ReadWriter
     config *config.Config
+    Index  uint32
 }
 
-func NewConn(conn net.Conn, rw *bufio.ReadWriter, c *config.Config) *Conn {
+func NewConn(conn net.Conn, rw *bufio.ReadWriter, c *config.Config, i uint32) *Conn {
     return &Conn{
         Conn   : conn,
         RW     : rw,
         config : c,
+        Index  : i,
     }
 }
 
@@ -101,5 +103,14 @@ func (c *Conn) SetReadTimeout() {
 func (c *Conn) SetWriteTimeout() {
     if c.config.WriteTimeout > 0 {
         c.Conn.SetWriteDeadline(time.Now().Add(time.Millisecond * time.Duration(c.config.WriteTimeout)))
+    }
+}
+
+func (c *Conn) Connected() bool {
+    if _, err := c.Write([]byte("version\r\n")); err == nil {
+        c.ReadString('\n')
+        return true
+    } else {
+        return false
     }
 }

@@ -43,21 +43,21 @@ func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, expt
 
     // send datas to memcached server
     if _, err := conn.Write(data); err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return err
     }
     
     // parse the response from server
     response, err := conn.ReadString(lf)
     if err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return err
     }
 
     err = checkError(response)
 
     // put the connect back to the pool
-    parse.release(key, conn, false)
+    parse.release(conn, false)
 
     return err
 }
@@ -104,7 +104,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
 
         // send datas to memcached server
         if _, err := conn.Write(command); err != nil {
-            parse.releaseByIndex(i, conn, true)
+            parse.release(conn, true)
             return items, err
         }
 
@@ -112,7 +112,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
         for {
             if line, err := conn.ReadString(lf); err == nil {
                 if err = checkError(line); err != nil {
-                    parse.releaseByIndex(i, conn, true)
+                    parse.release(conn, true)
                     return items, err
                 }
 
@@ -136,18 +136,18 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
                             if c, err := conn.ReadByte(); err == nil {
                                 item.TValue = append(item.TValue, c)
                             } else {
-                                parse.releaseByIndex(i, conn, true)
+                                parse.release(conn, true)
                                 return items, err
                             }
                         }
 
                         if _, err = conn.ReadByte(); err != nil {  //read '\r'
-                            parse.releaseByIndex(i, conn, true)
+                            parse.release(conn, true)
                             return items, err
                         }
 
                         if _, err = conn.ReadByte(); err != nil {  //read '\n'
-                            parse.releaseByIndex(i, conn, true)
+                            parse.release(conn, true)
                             return items, err
                         }
                     }
@@ -161,13 +161,13 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
                     items[item.TKey] = item
                 }
             } else {
-                parse.releaseByIndex(i, conn, true)
+                parse.release(conn, true)
                 return items, err
             }
         }
 
         // put the connect back to the pool
-        parse.releaseByIndex(i, conn, false)
+        parse.release(conn, false)
     }
 
     return
@@ -186,21 +186,21 @@ func (parse *TextProtocolParse) Deletion(key string) error {
 
     // send datas to memcached server
     if _, err := conn.Write(command); err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return err
     }
 
     // parse the response from server
     response, err := conn.ReadString(lf)
     if err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return err
     }
 
     err = checkError(response)
 
     // put the connect back to the pool
-    parse.release(key, conn, false)
+    parse.release(conn, false)
 
     return err
 }
@@ -218,21 +218,21 @@ func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64)
 
     // send datas to memcached server
     if _, err := conn.Write(command); err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return 0, err
     }
 
     // parse the response from server
     response, err := conn.ReadString(lf)
     if err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return 0, err
     }
 
     err = checkError(response)
 
     // put the connect back to the pool
-    parse.release(key, conn, false)
+    parse.release(conn, false)
 
     if err == nil {
         return strconv.ParseUint(strings.Replace(response, crlf, "", -1), 10, 64)
@@ -254,40 +254,31 @@ func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
 
     // send datas to memcached server
     if _, err := conn.Write(command); err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return err
     }
 
     // parse the response from server
     response, err := conn.ReadString(lf)
     if err != nil {
-        parse.release(key, conn, true)
+        parse.release(conn, true)
         return err
     }
 
     err = checkError(response)
 
     // put the connect back to the pool
-    parse.release(key, conn, false)
+    parse.release(conn, false)
 
     return err
 }
 
-func (parse *TextProtocolParse) release(key string, conn *common.Conn, isClose bool) {
+func (parse *TextProtocolParse) release(conn *common.Conn, isClose bool) {
     if isClose {
         go conn.Close()
-        go parse.pool.Release(key, nil)
+        go parse.pool.Release(nil)
     } else {
-        go parse.pool.Release(key, conn)
-    }
-}
-
-func (parse *TextProtocolParse) releaseByIndex(i uint32, conn *common.Conn, isClose bool) {
-    if isClose {
-        go conn.Close()
-        go parse.pool.ReleaseByIndex(i, nil)
-    } else {
-        go parse.pool.ReleaseByIndex(i, conn)
+        go parse.pool.Release(conn)
     }
 }
 

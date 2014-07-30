@@ -6,6 +6,7 @@ type Config struct {
     InitConns    uint16      //connect pool size of each server
     ReadTimeout  int64       //Millisecond
     WriteTimeout int64       //Millisecond
+    Rehash       bool        //true: if a Memcached server crash, choose another one; false: just return an error
 }
 
 func New() *Config {

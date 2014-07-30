@@ -11,6 +11,7 @@ import (
 
 var conf = &config.Config{
     Servers : []string{"127.0.0.1:11211"},
+    Rehash  : true,
 }
 
 var clientT, _ = memcached.NewMemcachedClient4T(conf)
