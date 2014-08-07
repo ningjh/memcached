@@ -5,23 +5,27 @@ import (
     "container/list"
     "fmt"
     "sync"
+
+    "github.com/ningjh/memcached/config"
 )
 
 type Node struct {
-	HashCode uint32
-	Server   string
+	HashCode    uint32
+	ServerIndex int
 }
 
 type Consistent struct {
+    config           *config.Config
 	circle           *list.List
 	numberOfReplicas int
 	sync.RWMutex
 }
 
-func NewConsistent(n int) *Consistent {
+func NewConsistent(c *config.Config) *Consistent {
     return &Consistent{
+        config           : c,
     	circle           : list.New(),
-    	numberOfReplicas : n,
+    	numberOfReplicas : c.NumberOfReplicas,
     }
 }
 
@@ -33,14 +37,24 @@ func (c *Consistent) hashCode(key string) uint32 {
 	return crc32.ChecksumIEEE([]byte(key))
 }
 
+func (c *Consistent) getServerIndex(key string) int {
+    for i, v := range c.config.Servers {
+        if v == key {
+            return i
+        }
+    }
+
+    return 0
+}
+
 func (c *Consistent) Add(key string) {
 	c.Lock()
 	defer c.Unlock()
 
 	for i := 0; i < c.numberOfReplicas; i++ {
         node := &Node{
-        	HashCode : c.hashCode(c.genKey(key, i)),
-        	Server   : key,
+        	HashCode      : c.hashCode(c.genKey(key, i)),
+        	ServerIndex   : c.getServerIndex(key),
         }
 
         if e := c.circle.Back(); e == nil {
@@ -84,31 +98,31 @@ func (c *Consistent) Remove(key string) {
     }
 }
 
-func (c *Consistent) Get(key string) (server string, err error) {
+func (c *Consistent) Get(key string) (server int, err error) {
     c.RLock()
     defer c.RUnlock()
 
+    server = -1
     hashCode := c.hashCode(key)
 
     for e := c.circle.Front(); e != nil; e = e.Next() {
         if n, ok := e.Value.(*Node); ok {
         	if hashCode < n.HashCode {
-        		server = n.Server
+        		server = n.ServerIndex
         		break
         	}
         }
     }
 
-    if server == "" {
+    if server == -1 {
         if e := c.circle.Front(); e != nil {
         	if n, ok := e.Value.(*Node); ok {
-        		server = n.Server
-
+        		server = n.ServerIndex
         	}
         }
     }
 
-    if server == "" {
+    if server == -1 {
     	err = fmt.Errorf("Memcached: could not found a server")
     }
 

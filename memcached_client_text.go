@@ -22,7 +22,11 @@ func NewMemcachedClient4T(c *config.Config) (*MemcachedClient4T, error) {
     }
 
     if c.InitConns <= 0 {
-        c.InitConns = 10
+        c.InitConns = 15
+    }
+
+    if c.NumberOfReplicas <= 0 {
+        c.NumberOfReplicas = 20
     }
 
     p, err := pool.New(c)
