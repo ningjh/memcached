@@ -55,10 +55,10 @@ type Conn struct {
     Conn   net.Conn
     RW     *bufio.ReadWriter
     config *config.Config
-    Index  uint32
+    Index  int
 }
 
-func NewConn(conn net.Conn, rw *bufio.ReadWriter, c *config.Config, i uint32) *Conn {
+func NewConn(conn net.Conn, rw *bufio.ReadWriter, c *config.Config, i int) *Conn {
     return &Conn{
         Conn   : conn,
         RW     : rw,

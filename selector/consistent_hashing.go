@@ -5,8 +5,10 @@ import (
     "container/list"
     "fmt"
     "sync"
+    "time"
 
     "github.com/ningjh/memcached/config"
+    "github.com/ningjh/memcached/factory"
 )
 
 type Node struct {
@@ -18,6 +20,8 @@ type Consistent struct {
     config           *config.Config
 	circle           *list.List
 	numberOfReplicas int
+    nodesStatus      []bool
+    factory          *factory.ConnectionFactory
 	sync.RWMutex
 }
 
@@ -26,6 +30,8 @@ func NewConsistent(c *config.Config) *Consistent {
         config           : c,
     	circle           : list.New(),
     	numberOfReplicas : c.NumberOfReplicas,
+        factory          : factory.NewConnectionFactory(c),
+        nodesStatus      : make([]bool, len(c.Servers)),
     }
 }
 
@@ -47,14 +53,14 @@ func (c *Consistent) getServerIndex(key string) int {
     return 0
 }
 
-func (c *Consistent) Add(key string) {
-	c.Lock()
-	defer c.Unlock()
+func (c *Consistent) add(key string) {
+    serverIndex := c.getServerIndex(key)
+    c.nodesStatus[serverIndex] = true
 
 	for i := 0; i < c.numberOfReplicas; i++ {
         node := &Node{
         	HashCode      : c.hashCode(c.genKey(key, i)),
-        	ServerIndex   : c.getServerIndex(key),
+        	ServerIndex   : serverIndex,
         }
 
         if e := c.circle.Back(); e == nil {
@@ -80,6 +86,13 @@ func (c *Consistent) Add(key string) {
 	}
 }
 
+func (c *Consistent) Add(key string) {
+    c.Lock()
+    defer c.Unlock()
+
+    c.add(key)
+}
+
 func (c *Consistent) Remove(key string) {
     c.Lock()
     defer c.Unlock()
@@ -91,6 +104,7 @@ func (c *Consistent) Remove(key string) {
     		if n, ok := e.Value.(*Node); ok {
     			if n.HashCode == hashCode {
     				c.circle.Remove(e)
+                    c.nodesStatus[n.ServerIndex] = false
     				break
     			}
     		}
@@ -123,8 +137,38 @@ func (c *Consistent) Get(key string) (server int, err error) {
     }
 
     if server == -1 {
-    	err = fmt.Errorf("Memcached: could not found a server")
+    	err = fmt.Errorf("Memcached : could not found a server")
     }
 
     return
+}
+
+func (c *Consistent) Len() int {
+    c.RLock()
+    defer c.RUnlock()
+
+    return c.circle.Len()
+}
+
+func (c *Consistent) RefreshTicker() {
+    ticker := time.NewTicker(time.Second * time.Duration(c.config.RefreshHashIntervalInSecond))
+
+    go func(){
+        for _ := range ticker.C {
+            c.Lock()
+
+            for i, v := range c.config.Servers {
+                if !c.nodesStatus[i] {
+                    if conn, err := c.factory.NewTcpConnect(v, i); err == nil {
+                        if conn.Connected() {
+                            c.add(v)
+                        }
+                        conn.Close()
+                    }
+                }
+            }
+
+            c.Unlock()
+        }
+    }()
 }

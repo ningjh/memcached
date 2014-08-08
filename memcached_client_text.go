@@ -29,6 +29,10 @@ func NewMemcachedClient4T(c *config.Config) (*MemcachedClient4T, error) {
         c.NumberOfReplicas = 20
     }
 
+    if c.RefreshHashIntervalInSecond <= 0 {
+        c.RefreshHashIntervalInSecond = 15
+    }
+
     p, err := pool.New(c)
     if err != nil {
         return nil, err

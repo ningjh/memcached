@@ -14,7 +14,7 @@ type ConnectionFactory struct {
 }
 
 // NewTcpConnect create a tcp connection
-func (cf *ConnectionFactory) NewTcpConnect(addr string, i uint32) (conn *common.Conn, err error) {
+func (cf *ConnectionFactory) NewTcpConnect(addr string, i int) (conn *common.Conn, err error) {
     tcpConn, err := net.Dial("tcp", addr)
 
     if err == nil {

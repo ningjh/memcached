@@ -8,7 +8,6 @@ import (
 
     "github.com/ningjh/memcached/pool"
     "github.com/ningjh/memcached/common"
-    "github.com/ningjh/memcached/selector"
     "github.com/ningjh/memcached/config"
 )
 
@@ -71,12 +70,12 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
         return
     }
 
-    keyMap := make(map[uint32][]string)
+    keyMap := make(map[int][]string)
 
     // if a key has the same index, they will put together.
     for _, key := range keys {
         // calculate the key's index
-        index, err := selector.SelectServer(parse.config.Servers, key)
+        index, err := parse.pool.GetNode(key)
 
         if err != nil {
             return items, err
