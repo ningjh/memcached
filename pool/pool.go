@@ -3,112 +3,119 @@
 package pool
 
 import (
-    "github.com/ningjh/memcached/config"
-    "github.com/ningjh/memcached/selector"
-    "github.com/ningjh/memcached/factory"
-    "github.com/ningjh/memcached/common"
-    
-    "errors"
+	"github.com/ningjh/memcached/common"
+	"github.com/ningjh/memcached/config"
+	"github.com/ningjh/memcached/factory"
+	"github.com/ningjh/memcached/selector"
+
+	"errors"
 )
 
 type Pool interface {
-    Get(string) (*common.Conn, error)
-    GetByIndex(uint32) (*common.Conn, error)
-    Release(*common.Conn)
+	Get(string) (*common.Conn, error)
+	Release(*common.Conn)
+	GetNode(string) (int, error)
 }
 
 type ConnectionPool struct {
-    pools   []chan *common.Conn
-    config  *config.Config
-    factory *factory.ConnectionFactory
+	pools      []chan *common.Conn
+	config     *config.Config
+	factory    *factory.ConnectionFactory
+	consistent *selector.Consistent
 }
 
 // return a ConnectionPool instance, and for each server initializes a connection pool
 func New(config *config.Config) (Pool, error) {
-    pool := &ConnectionPool{
-        pools   : make([]chan *common.Conn, 0, len(config.Servers)),
-        config  : config,
-        factory : factory.NewConnectionFactory(config),
-    }
+	if len(config.Servers) == 0 {
+		return nil, errors.New("Memcached : Memcached Servers must not empty")
+	}
 
-    for i := 0; i < len(pool.config.Servers); i++ {
-        pool.pools = append(pool.pools, make(chan *common.Conn, pool.config.InitConns))
+	pool := &ConnectionPool{
+		pools:      make([]chan *common.Conn, 0, len(config.Servers)),
+		config:     config,
+		factory:    factory.NewConnectionFactory(config),
+		consistent: selector.NewConsistent(config),
+	}
 
-        for j := 0; j < int(pool.config.InitConns); j++ {
-            conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i], uint32(i))
+	for i := 0; i < len(pool.config.Servers); i++ {
+		pool.pools = append(pool.pools, make(chan *common.Conn, pool.config.InitConns))
 
-            if err != nil {
-                return nil, err
-            } else {
-                pool.pools[i] <- conn
-            }
-        }
-    }
+		for j := 0; j < int(pool.config.InitConns / 2 + 1); j++ {
+			conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i], i)
 
-    return pool, nil
+			if err != nil {
+				return nil, err
+			} else {
+				pool.pools[i] <- conn
+			}
+		}
+
+		pool.consistent.Add(pool.config.Servers[i])
+	}
+
+	pool.consistent.RefreshTicker()
+
+	return pool, nil
 }
 
-// GetByIndex get connect with key's index
-func (pool *ConnectionPool) GetByIndex(i uint32) (*common.Conn, error) {
-    if i < 0 || i >= uint32(len(pool.pools)) {
-        return nil, errors.New("Memcached: index out of range")
-    }
-
-    conn, err := pool.get(i)
-
-    //if the Memcached server crash, choose another one.
-    if pool.config.Rehash {
-        var ok bool = false
-
-        if err == nil {
-            ok = conn.Connected()
-        }
-
-        if !ok {
-            for i = 0; i < uint32(len(pool.config.Servers)); i++ {
-                if conn, err = pool.get(i); err == nil {
-                    if conn.Connected() {
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    return conn, err
+// GetNode get consistent hashing node
+func (pool *ConnectionPool) GetNode(key string) (int, error) {
+	return pool.consistent.Get(key)
 }
 
 // Get get connect with key
-func (pool *ConnectionPool) Get(key string) (*common.Conn, error) {
-    i, err := selector.SelectServer(pool.config.Servers, key)
+func (pool *ConnectionPool) Get(key string) (conn *common.Conn, err error) {
+	var i, j int
 
-    if err != nil {
-        return nil, err
-    }
+	for j = 0; j < len(pool.config.Servers); j++ {
+		if i, err = pool.GetNode(key); err == nil {
+			if conn, err = pool.get(i); err == nil {
+				if conn.Connected() {
+					break
+				} else {
+					err = errors.New("Memcached : can not connect to Memcached server")
+				}
+			}
 
-    return pool.GetByIndex(i)
+			conn.Close()
+			pool.consistent.Remove(pool.config.Servers[i])
+
+			// clean the pool
+			for t := 0; t < int(pool.config.InitConns); t++ {
+				if connTemp, errTemp := pool.get(i); errTemp == nil {
+					connTemp.Close()
+				} else {
+					break
+				}
+			}
+		} else {
+			break
+		}
+	}
+
+	return
 }
 
 // Release put connect back to the pool
 func (pool *ConnectionPool) Release(conn *common.Conn) {
-    if conn != nil {
-        pool.release(conn.Index, conn)
-    }
+	if conn != nil {
+		pool.release(conn.Index, conn)
+	}
 }
 
-func (pool *ConnectionPool) get(i uint32) (*common.Conn, error) {
-    select {
-        case conn := <- pool.pools[i] :
-            return conn, nil
-        default :
-            return pool.factory.NewTcpConnect(pool.config.Servers[i], i)
-    }
+func (pool *ConnectionPool) get(i int) (*common.Conn, error) {
+	select {
+	case conn := <-pool.pools[i]:
+		return conn, nil
+	default:
+		return pool.factory.NewTcpConnect(pool.config.Servers[i], i)
+	}
 }
 
-func (pool *ConnectionPool) release(i uint32, conn *common.Conn) {
-    select {
-        case pool.pools[i] <- conn :
-        default :
-            conn.Close()
-    }
+func (pool *ConnectionPool) release(i int, conn *common.Conn) {
+	select {
+	case pool.pools[i] <- conn:
+	default:
+		conn.Close()
+	}
 }
