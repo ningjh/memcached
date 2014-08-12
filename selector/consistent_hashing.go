@@ -1,3 +1,4 @@
+//Package selector determine which memcached server to talk to
 package selector
 
 import (
@@ -11,16 +12,18 @@ import (
 	"github.com/ningjh/memcached/factory"
 )
 
+// Node server virtual node
 type Node struct {
 	HashCode    uint32
 	ServerIndex int
 }
 
+// Consistent consistent hashing table
 type Consistent struct {
 	config           *config.Config
-	circle           *list.List
+	circle           *list.List    //store virtual nodes
 	numberOfReplicas int
-	nodesStatus      []bool
+	nodesStatus      []bool        //the memcached server status, enabled or crash
 	factory          *factory.ConnectionFactory
 	sync.RWMutex
 }
@@ -35,6 +38,7 @@ func NewConsistent(c *config.Config) *Consistent {
 	}
 }
 
+// genKey generate key for a virtual node
 func (c *Consistent) genKey(key string, i int) string {
 	return fmt.Sprintf("%s#%d", key, i)
 }
@@ -53,6 +57,7 @@ func (c *Consistent) getServerIndex(key string) int {
 	return 0
 }
 
+// add store a virtual node
 func (c *Consistent) add(key string) {
 	serverIndex := c.getServerIndex(key)
 	c.nodesStatus[serverIndex] = true
@@ -86,6 +91,7 @@ func (c *Consistent) add(key string) {
 	}
 }
 
+// Add store a virtual node
 func (c *Consistent) Add(key string) {
 	c.Lock()
 	defer c.Unlock()
@@ -93,6 +99,7 @@ func (c *Consistent) Add(key string) {
 	c.add(key)
 }
 
+// Remove remove a virtual node
 func (c *Consistent) Remove(key string) {
 	c.Lock()
 	defer c.Unlock()
@@ -112,6 +119,7 @@ func (c *Consistent) Remove(key string) {
 	}
 }
 
+// Get retrieval a virtual node
 func (c *Consistent) Get(key string) (server int, err error) {
 	c.RLock()
 	defer c.RUnlock()
@@ -143,6 +151,8 @@ func (c *Consistent) Get(key string) (server int, err error) {
 	return
 }
 
+// RefreshTicker the background task regularly. 
+// Add a memcached server into hash table when it has recovered from a panic
 func (c *Consistent) RefreshTicker() {
 	ticker := time.NewTicker(time.Second * time.Duration(c.config.RefreshHashIntervalInSecond))
 

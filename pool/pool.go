@@ -40,7 +40,7 @@ func New(config *config.Config) (Pool, error) {
 	for i := 0; i < len(pool.config.Servers); i++ {
 		pool.pools = append(pool.pools, make(chan *common.Conn, pool.config.InitConns))
 
-		for j := 0; j < int(pool.config.InitConns/2+1); j++ {
+		for j := 0; j < int(pool.config.InitConns / 2 + 1); j++ {
 			conn, err := pool.factory.NewTcpConnect(pool.config.Servers[i], i)
 
 			if err != nil {

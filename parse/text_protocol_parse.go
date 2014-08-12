@@ -98,7 +98,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
 			return items, err
 		} else {
 			if conn.Index != i {
-				return items, fmt.Errorf("Memcached : server node has been modified")
+				return items, fmt.Errorf("Memcached : server nodes had been modified")
 			}
 		}
 
