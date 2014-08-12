@@ -1,7 +1,7 @@
 #Memcache client for Go
 
 ##简介
-    这是一个用Go语言实现的Memcached客户端。主要用以下特性：
+    这是一个用Go语言实现的Memcached客户端。主要有以下特性：
     
     1. 实现了Memcached的文本协议（二进制协议稍后会实现）。
     2. 使用了连接池，复用TCP连接。
