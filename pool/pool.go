@@ -81,13 +81,7 @@ func (pool *ConnectionPool) Get(key string) (conn *common.Conn, err error) {
 			pool.consistent.Remove(pool.config.Servers[i])
 
 			// clean the pool
-			for t := 0; t < int(pool.config.InitConns); t++ {
-				if connTemp, errTemp := pool.get(i); errTemp == nil {
-					connTemp.Close()
-				} else {
-					break
-				}
-			}
+			pool.clean(i)
 		} else {
 			break
 		}
@@ -117,5 +111,15 @@ func (pool *ConnectionPool) release(i int, conn *common.Conn) {
 	case pool.pools[i] <- conn:
 	default:
 		conn.Close()
+	}
+}
+
+func (pool *ConnectionPool) clean(i int) {
+	for t := 0; t < int(pool.config.InitConns); t++ {
+		if conn, err := pool.get(i); err == nil {
+			conn.Close()
+		} else {
+			break
+		}
 	}
 }
