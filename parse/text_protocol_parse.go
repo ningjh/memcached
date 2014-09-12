@@ -35,7 +35,7 @@ func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, expt
 	}
 
 	// create command
-	command := createCommand(opr, key, flags, exptime, cas, len(value))
+	command := parse.createCommand(opr, key, flags, exptime, cas, len(value))
 
 	// merge all datas
 	data := mergeBytes(command, value, []byte(crlf))
@@ -53,7 +53,7 @@ func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, expt
 		return err
 	}
 
-	err = checkError(response)
+	err = parse.checkError(response)
 
 	// put the connect back to the pool
 	parse.release(conn, false)
@@ -103,7 +103,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
 		}
 
 		// create command
-		command := createCommand(opr, strings.Join(ks, whitespace), nil, nil, nil, nil)
+		command := parse.createCommand(opr, strings.Join(ks, whitespace), nil, nil, nil, nil)
 
 		// send datas to memcached server
 		if _, err := conn.Write(command); err != nil {
@@ -114,7 +114,7 @@ func (parse *TextProtocolParse) Retrieval(opr string, keys []string) (items map[
 		// parse response
 		for {
 			if line, err := conn.ReadString(lf); err == nil {
-				if err = checkError(line); err != nil {
+				if err = parse.checkError(line); err != nil {
 					parse.release(conn, true)
 					return items, err
 				}
@@ -185,7 +185,7 @@ func (parse *TextProtocolParse) Deletion(key string) error {
 	}
 
 	// create command
-	command := createCommand("delete", key, nil, nil, nil, nil)
+	command := parse.createCommand("delete", key, nil, nil, nil, nil)
 
 	// send datas to memcached server
 	if _, err := conn.Write(command); err != nil {
@@ -200,7 +200,7 @@ func (parse *TextProtocolParse) Deletion(key string) error {
 		return err
 	}
 
-	err = checkError(response)
+	err = parse.checkError(response)
 
 	// put the connect back to the pool
 	parse.release(conn, false)
@@ -217,7 +217,7 @@ func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64)
 	}
 
 	// create command
-	command := createCommand(opr, key, nil, nil, nil, value)
+	command := parse.createCommand(opr, key, nil, nil, nil, value)
 
 	// send datas to memcached server
 	if _, err := conn.Write(command); err != nil {
@@ -232,7 +232,7 @@ func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64)
 		return 0, err
 	}
 
-	err = checkError(response)
+	err = parse.checkError(response)
 
 	// put the connect back to the pool
 	parse.release(conn, false)
@@ -253,7 +253,7 @@ func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
 	}
 
 	// create command
-	command := createCommand("touch", key, nil, exptime, nil, nil)
+	command := parse.createCommand("touch", key, nil, exptime, nil, nil)
 
 	// send datas to memcached server
 	if _, err := conn.Write(command); err != nil {
@@ -268,7 +268,7 @@ func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
 		return err
 	}
 
-	err = checkError(response)
+	err = parse.checkError(response)
 
 	// put the connect back to the pool
 	parse.release(conn, false)
@@ -276,16 +276,15 @@ func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
 	return err
 }
 
-func (parse *TextProtocolParse) release(conn *common.Conn, isClose bool) {
-	if isClose {
+func (parse *TextProtocolParse) release(conn *common.Conn, doClose bool) {
+	if doClose {
 		go conn.Close()
-		go parse.pool.Release(nil)
 	} else {
 		go parse.pool.Release(conn)
 	}
 }
 
-func checkError(s string) (err error) {
+func (parse *TextProtocolParse) checkError(s string) (err error) {
 	if len(strings.Trim(s, whitespace)) == 0 {
 		err = fmt.Errorf("Memcached : empty value error")
 		return
@@ -311,7 +310,7 @@ func checkError(s string) (err error) {
 	return
 }
 
-func createCommand(opr string, key, flags, exptime, cas, value interface{}) (command []byte) {
+func (parse *TextProtocolParse) createCommand(opr string, key, flags, exptime, cas, value interface{}) (command []byte) {
 	switch opr {
 	case "set", "add", "replace", "append", "prepend":
 		command = []byte(fmt.Sprintf("%s %s %d %d %d %s", opr, key, flags, exptime, value, crlf))

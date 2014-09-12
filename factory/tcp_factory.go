@@ -4,7 +4,6 @@ import (
 	"github.com/ningjh/memcached/common"
 	"github.com/ningjh/memcached/config"
 
-	"bufio"
 	"net"
 )
 
@@ -18,7 +17,7 @@ func (cf *ConnectionFactory) NewTcpConnect(addr string, i int) (conn *common.Con
 	tcpConn, err := net.Dial("tcp", addr)
 
 	if err == nil {
-		conn = common.NewConn(tcpConn, bufio.NewReadWriter(bufio.NewReader(tcpConn), bufio.NewWriter(tcpConn)), cf.config, i)
+		conn = common.NewConn(tcpConn, cf.config, i)
 	}
 
 	return
