@@ -77,6 +77,7 @@ func (parse *BinaryPorotolParse) release(conn *common.Conn, doClose bool) {
 	}
 }
 
+// checkError if the status code of a response packet is no zero, return error.
 func (parse *BinaryPorotolParse) checkError(status uint16) (err error) {
 	switch status {
 		case 0x0000 : err = nil
