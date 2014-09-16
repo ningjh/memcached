@@ -39,7 +39,7 @@ func (c *Conn) SetWriteTimeout() {
 	}
 }
 
-// Write writes the contents of p into the buffer.
+// Write send the contents to memcached server.
 func (c *Conn) Write(p []byte) (n int, err error) {
 	c.SetWriteTimeout()
 
@@ -50,8 +50,19 @@ func (c *Conn) Write(p []byte) (n int, err error) {
 	return
 }
 
+// WriteToBuffer writes the contents of p into the buffer.
+func (c *Conn) WriteToBuffer(p []byte) (int, error) {
+	c.SetWriteTimeout()
+	return c.RW.Write(p)
+}
+
+// Flush writes any buffered data to the underlying Writer.
+func (c *Conn) Flush() error {
+	return c.RW.Flush()
+}
+
 // Read reads data into p. It returns the number of bytes read into p.
-func (c *Conn) Read(p []byte) (n int, err error) {
+func (c *Conn) Read(p []byte) (int, error) {
 	c.SetReadTimeout()
 	return c.RW.Read(p)
 }

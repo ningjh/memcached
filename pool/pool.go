@@ -77,7 +77,10 @@ func (pool *ConnectionPool) Get(key string) (conn *common.Conn, err error) {
 				}
 			}
 
-			conn.Close()
+			if conn != nil {
+				conn.Close()
+			}
+			
 			pool.consistent.Remove(pool.config.Servers[i])
 
 			// clean the pool

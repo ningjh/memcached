@@ -41,3 +41,27 @@ func (item *TextItem) Cas() uint64 {
 func (item *TextItem) Flags() uint32 {
 	return item.TFlags
 }
+
+// BinaryItem implements Item.
+type BinaryItem struct {
+	BKey   string
+	BValue []byte
+	BFlags uint32
+	BCas   uint64
+}
+
+func (item *BinaryItem) Key() string {
+	return item.BKey
+}
+
+func (item *BinaryItem) Value() []byte {
+	return item.BValue
+}
+
+func (item *BinaryItem) Cas() uint64 {
+	return item.BCas
+}
+
+func (item *BinaryItem) Flags() uint32 {
+	return item.BFlags
+}

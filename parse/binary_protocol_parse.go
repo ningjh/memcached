@@ -6,6 +6,7 @@ import (
 	"github.com/ningjh/memcached/pool"
 
 	"errors"
+	"encoding/binary"
 )
 
 const (
@@ -35,9 +36,6 @@ const (
 	Append    uint8 = 0x0e
 	Prepend   uint8 = 0x0f
 	Touch     uint8 = 0x1c
-
-	// data types
-	DataType  uint8 = 0x00
 
 	// magic byte
 	reqMagic uint8 = 0x80
@@ -100,4 +98,113 @@ func (parse *BinaryPorotolParse) checkError(status uint16) (err error) {
 	}
 
 	return
+}
+
+func (parse *BinaryPorotolParse) fillPacket(p *packet, conn *common.Conn) (err error) {
+	var header []byte = make([]byte, headerLen)
+    var i      int    = 0
+
+    // fill request header
+    header[i] = p.magic
+    i += magicLen
+
+    header[i] = p.opcode
+    i += opcodeLen
+
+    binary.BigEndian.PutUint16(header[i:i+keyLen], p.keyLength)
+    i += keyLen
+
+    header[i] = p.extrasLength
+    i += extrasLen
+
+    header[i] = p.dataType
+    i += dataTypeLen
+
+    binary.BigEndian.PutUint16(header[i:i+statusLen], p.statusOrVbucket)
+    i += statusLen
+
+    binary.BigEndian.PutUint32(header[i:i+totalBodyLen], p.totalBodyLength)
+    i += totalBodyLen
+
+    binary.BigEndian.PutUint32(header[i:i+opaqueLen], p.opaque)
+    i += opaqueLen
+
+    binary.BigEndian.PutUint64(header[i:i+casLen], p.cas)
+
+    // write content to buffer
+    _, err = conn.WriteToBuffer(header)
+	_, err = conn.WriteToBuffer(p.extras)
+	_, err = conn.WriteToBuffer(p.key)
+	_, err = conn.WriteToBuffer(p.value)
+
+    return
+}
+
+func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]common.Item, err error) {
+	// result set of items
+	items = make(map[string]common.Item)
+
+	if len(keys) == 0 {
+		return
+	}
+
+	keyMap := make(map[int][]string)
+
+	// if a key has the same index, they will put together.
+	for _, key := range keys {
+		// calculate the key's index
+		index, err := parse.pool.GetNode(key)
+
+		if err != nil {
+			return
+		}
+
+		// same index, same slice
+		if ks, ok := keyMap[index]; ok {
+			keyMap[index] = append(ks, key)
+		} else {
+			ks = make([]string, 0, 5)
+			keyMap[index] = append(ks, key)
+		}
+	}
+
+	// send the get command line, and parse response
+	for i, ks := range keyMap {
+		// get connect by key
+		conn, err := parse.pool.Get(ks[0])
+		if err != nil {
+			return
+		} else {
+			if conn.Index != i {
+				err = errors.New("Memcached : server nodes had been modified")
+				return
+			}
+		}
+
+		loopCount := len(ks) - 1
+		
+		for j := 0; j <= loopCount; j++ {
+			reqPacket := &packet{
+				magic:           reqMagic,
+				keyLength:       uint16(len(k)),
+				key:             []byte(k),
+				totalBodyLength: uint32(len(k)),
+			}
+
+			if j < loopCount {
+				reqPacket.opcode = GetKQ
+			} else {
+				reqPacket.opcode = GetK
+			}
+
+			if err = parse.fillPacket(reqPacket, conn); err != nil {
+				return
+			}
+		}
+
+		// send content to memcached server
+		if err = conn.Flush(); err != nil {
+			return
+		}
+	}
 }
