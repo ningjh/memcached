@@ -102,34 +102,18 @@ func (parse *BinaryPorotolParse) checkError(status uint16) (err error) {
 
 func (parse *BinaryPorotolParse) fillPacket(p *packet, conn *common.Conn) (err error) {
 	var header []byte = make([]byte, headerLen)
-    var i      int    = 0
+	var i      int
 
     // fill request header
-    header[i] = p.magic
-    i += magicLen
-
-    header[i] = p.opcode
-    i += opcodeLen
-
-    binary.BigEndian.PutUint16(header[i:i+keyLen], p.keyLength)
-    i += keyLen
-
-    header[i] = p.extrasLength
-    i += extrasLen
-
-    header[i] = p.dataType
-    i += dataTypeLen
-
-    binary.BigEndian.PutUint16(header[i:i+statusLen], p.statusOrVbucket)
-    i += statusLen
-
-    binary.BigEndian.PutUint32(header[i:i+totalBodyLen], p.totalBodyLength)
-    i += totalBodyLen
-
-    binary.BigEndian.PutUint32(header[i:i+opaqueLen], p.opaque)
-    i += opaqueLen
-
-    binary.BigEndian.PutUint64(header[i:i+casLen], p.cas)
+    header[i] = p.magic;                                                     i += magicLen
+    header[i] = p.opcode;                                                    i += opcodeLen
+    binary.BigEndian.PutUint16(header[i:i+keyLen],       p.keyLength);       i += keyLen
+    header[i] = p.extrasLength;                                              i += extrasLen
+    header[i] = p.dataType;                                                  i += dataTypeLen
+    binary.BigEndian.PutUint16(header[i:i+statusLen],    p.statusOrVbucket); i += statusLen
+    binary.BigEndian.PutUint32(header[i:i+totalBodyLen], p.totalBodyLength); i += totalBodyLen
+    binary.BigEndian.PutUint32(header[i:i+opaqueLen],    p.opaque);          i += opaqueLen
+    binary.BigEndian.PutUint64(header[i:i+casLen],       p.cas)
 
     // write content to buffer
     _, err = conn.WriteToBuffer(header)
@@ -140,7 +124,73 @@ func (parse *BinaryPorotolParse) fillPacket(p *packet, conn *common.Conn) (err e
     return
 }
 
-func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]common.Item, err error) {
+func (parse *BinaryPorotolParse) parsePacket(conn *common.Conn) (p *packet, err error) {
+	var header []byte = make([]byte, headerLen)
+	var i, n   int
+
+	// read response header
+	if n, err = conn.Read(header); err != nil {
+		return
+	} else if n != headerLen {
+		err = errors.New("Memcached : Unknow error")
+		return
+	}
+
+	// parse response header
+	p = &packet{}
+	p.magic           = header[i];                                         i += magicLen
+	p.opcode          = header[i];                                         i += opcodeLen
+	p.keyLength       = binary.BigEndian.Uint16(header[i:i+keyLen]);       i += keyLen
+	p.extrasLength    = header[i];                                         i += extrasLen
+	p.dataType        = header[i];                                         i += dataTypeLen
+	p.statusOrVbucket = binary.BigEndian.Uint16(header[i:i+statusLen]);    i += statusLen
+	p.totalBodyLength = binary.BigEndian.Uint32(header[i:i+totalBodyLen]); i += totalBodyLen
+	p.opaque          = binary.BigEndian.Uint32(header[i:i+opaqueLen]);    i += opaqueLen
+	p.cas             = binary.BigEndian.Uint64(header[i:i+casLen])
+
+	// read extras from response if exist
+	if p.extrasLength > 0 {
+		p.extras = make([]byte, p.extrasLength)
+
+		if n, err = conn.Read(p.extras); err != nil {
+			return
+		} else if n != p.extrasLength {
+			err = errors.New("Memcached : Unknow error")
+			return
+		}
+	}
+
+	// read key from response if exist
+	if p.keyLength > 0 {
+		p.key = make([]byte, p.keyLength)
+
+		if n, err = conn.Read(p.key); err != nil {
+			return
+		} else if n != p.keyLength {
+			err = errors.New("Memcached : Unknow error")
+			return
+		}
+	}
+
+	// read value from response if exist
+	valueLength := int(p.totalBodyLength) - int(p.keyLength) - int(p.extrasLength)
+
+	if valueLength > 0 {
+		p.value = make([]byte, valueLength)
+
+		if n, err = conn.Read(p.value); err != nil {
+			return
+		} else if n != valueLength {
+			err = errors.New("Memcached : Unknow error")
+			return
+		}
+	}
+
+	return
+}
+
+// Retrieval retrieve data from server
+func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]common.Item) {
 	// result set of items
 	items = make(map[string]common.Item)
 
@@ -152,33 +202,27 @@ func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]comm
 
 	// if a key has the same index, they will put together.
 	for _, key := range keys {
-		// calculate the key's index
-		index, err := parse.pool.GetNode(key)
-
-		if err != nil {
+		if index, err := parse.pool.GetNode(key); err != nil {
 			return
-		}
-
-		// same index, same slice
-		if ks, ok := keyMap[index]; ok {
-			keyMap[index] = append(ks, key)
 		} else {
-			ks = make([]string, 0, 5)
-			keyMap[index] = append(ks, key)
+			// same index, same slice
+			if ks, ok := keyMap[index]; ok {
+				keyMap[index] = append(ks, key)
+			} else {
+				ks = make([]string, 0, 5)
+				keyMap[index] = append(ks, key)
+			}
 		}
 	}
 
 	// send the get command line, and parse response
+	LoopOut:
 	for i, ks := range keyMap {
 		// get connect by key
 		conn, err := parse.pool.Get(ks[0])
-		if err != nil {
-			return
-		} else {
-			if conn.Index != i {
-				err = errors.New("Memcached : server nodes had been modified")
-				return
-			}
+
+		if err != nil || conn.Index != i {
+			continue LoopOut
 		}
 
 		loopCount := len(ks) - 1
@@ -186,25 +230,68 @@ func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]comm
 		for j := 0; j <= loopCount; j++ {
 			reqPacket := &packet{
 				magic:           reqMagic,
-				keyLength:       uint16(len(k)),
-				key:             []byte(k),
-				totalBodyLength: uint32(len(k)),
+				keyLength:       uint16(len(ks[j])),
+				key:             []byte(ks[j]),
+				totalBodyLength: uint32(len(ks[j])),
 			}
 
+			//the first n-1 being getkq, the last being a regular getk
 			if j < loopCount {
 				reqPacket.opcode = GetKQ
 			} else {
 				reqPacket.opcode = GetK
 			}
 
-			if err = parse.fillPacket(reqPacket, conn); err != nil {
-				return
+			if err := parse.fillPacket(reqPacket, conn); err != nil {
+				parse.release(conn, true)
+				continue LoopOut
 			}
 		}
 
 		// send content to memcached server
-		if err = conn.Flush(); err != nil {
-			return
+		if err := conn.Flush(); err != nil {
+			parse.release(conn, true)
+			continue LoopOut
 		}
+
+		// receive response from memcached server
+		for j := 0; j <= loopCount; j++ {
+			resPacket, err := parse.parsePacket(conn)
+			if err != nil {
+				parse.release(conn, true)
+				continue LoopOut
+			}
+
+			if err := parse.checkError(resPacket.statusOrVbucket); err != nil {
+				continue
+			}
+
+			// fill item
+			item := &common.BinaryItem{BCas:resPacket.cas}
+
+			if resPacket.keyLength > 0 {
+				item.BKey = string(resPacket.key)
+			}
+
+			if len(resPacket.value) > 0 {
+				item.BValue = make([]byte, len(resPacket.value))
+				copy(item.BValue, resPacket.value)
+			}
+
+			if resPacket.extrasLength > 0 {
+				item.BFlags = binary.BigEndian.Uint32(resPacket.extras)
+			}
+
+			items[item.BKey] = item
+
+			// if the item is the last one, done!
+			if item.Bkey == ks[loopCount] {
+				break
+			}
+		}
+
+		parse.release(conn, false)
 	}
+
+	return
 }
