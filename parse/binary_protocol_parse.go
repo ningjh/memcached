@@ -104,24 +104,24 @@ func (parse *BinaryPorotolParse) fillPacket(p *packet, conn *common.Conn) (err e
 	var header []byte = make([]byte, headerLen)
 	var i      int
 
-    // fill request header
-    header[i] = p.magic;                                                     i += magicLen
-    header[i] = p.opcode;                                                    i += opcodeLen
-    binary.BigEndian.PutUint16(header[i:i+keyLen],       p.keyLength);       i += keyLen
-    header[i] = p.extrasLength;                                              i += extrasLen
-    header[i] = p.dataType;                                                  i += dataTypeLen
-    binary.BigEndian.PutUint16(header[i:i+statusLen],    p.statusOrVbucket); i += statusLen
-    binary.BigEndian.PutUint32(header[i:i+totalBodyLen], p.totalBodyLength); i += totalBodyLen
-    binary.BigEndian.PutUint32(header[i:i+opaqueLen],    p.opaque);          i += opaqueLen
-    binary.BigEndian.PutUint64(header[i:i+casLen],       p.cas)
+	// fill request header
+	header[i] = p.magic;                                                     i += magicLen
+	header[i] = p.opcode;                                                    i += opcodeLen
+	binary.BigEndian.PutUint16(header[i:i+keyLen],       p.keyLength);       i += keyLen
+	header[i] = p.extrasLength;                                              i += extrasLen
+	header[i] = p.dataType;                                                  i += dataTypeLen
+	binary.BigEndian.PutUint16(header[i:i+statusLen],    p.statusOrVbucket); i += statusLen
+	binary.BigEndian.PutUint32(header[i:i+totalBodyLen], p.totalBodyLength); i += totalBodyLen
+	binary.BigEndian.PutUint32(header[i:i+opaqueLen],    p.opaque);          i += opaqueLen
+	binary.BigEndian.PutUint64(header[i:i+casLen],       p.cas)
 
-    // write content to buffer
-    _, err = conn.WriteToBuffer(header)
+	// write content to buffer
+	_, err = conn.WriteToBuffer(header)
 	_, err = conn.WriteToBuffer(p.extras)
 	_, err = conn.WriteToBuffer(p.key)
 	_, err = conn.WriteToBuffer(p.value)
 
-    return
+	return
 }
 
 func (parse *BinaryPorotolParse) parsePacket(conn *common.Conn) (p *packet, err error) {
@@ -154,7 +154,7 @@ func (parse *BinaryPorotolParse) parsePacket(conn *common.Conn) (p *packet, err 
 
 		if n, err = conn.Read(p.extras); err != nil {
 			return
-		} else if n != p.extrasLength {
+		} else if n != int(p.extrasLength) {
 			err = errors.New("Memcached : Unknow error")
 			return
 		}
@@ -166,7 +166,7 @@ func (parse *BinaryPorotolParse) parsePacket(conn *common.Conn) (p *packet, err 
 
 		if n, err = conn.Read(p.key); err != nil {
 			return
-		} else if n != p.keyLength {
+		} else if n != int(p.keyLength) {
 			err = errors.New("Memcached : Unknow error")
 			return
 		}
@@ -174,7 +174,6 @@ func (parse *BinaryPorotolParse) parsePacket(conn *common.Conn) (p *packet, err 
 
 	// read value from response if exist
 	valueLength := int(p.totalBodyLength) - int(p.keyLength) - int(p.extrasLength)
-
 	if valueLength > 0 {
 		p.value = make([]byte, valueLength)
 
@@ -229,9 +228,9 @@ func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]comm
 		
 		for j := 0; j <= loopCount; j++ {
 			reqPacket := &packet{
-				magic:           reqMagic,
-				keyLength:       uint16(len(ks[j])),
-				key:             []byte(ks[j]),
+				magic          : reqMagic,
+				keyLength      : uint16(len(ks[j])),
+				key            : []byte(ks[j]),
 				totalBodyLength: uint32(len(ks[j])),
 			}
 
@@ -285,13 +284,142 @@ func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]comm
 			items[item.BKey] = item
 
 			// if the item is the last one, done!
-			if item.Bkey == ks[loopCount] {
+			if item.BKey == ks[loopCount] {
 				break
 			}
 		}
 
 		parse.release(conn, false)
 	}
+
+	return
+}
+
+// Set, Add, Replace
+func (parse *BinaryPorotolParse) Store(opr uint8, key string, flags uint32, exptime uint32, cas uint64, value []byte) (err error) {
+	// get a connect from the pool
+	var conn *common.Conn
+
+	if conn, err = parse.pool.Get(key); err != nil {
+		return
+	}
+
+	reqPacket := &packet{
+		magic       : resMagic,
+		opcode      : opr,
+		keyLength   : uint16(len(key)),
+		extrasLength: 8,
+		cas         : cas,
+		key         : []byte(key),
+		value       : value,
+	}
+	reqPacket.totalBodyLength = uint32(reqPacket.keyLength) + uint32(reqPacket.extrasLength) + uint32(len(reqPacket.value))
+	reqPacket.extras          = make([]byte, reqPacket.extrasLength)
+	binary.BigEndian.PutUint32(reqPacket.extras[:4], flags)
+	binary.BigEndian.PutUint32(reqPacket.extras[4:], exptime)
+
+	if err = parse.fillPacket(reqPacket, conn); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if err = conn.Flush(); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if resPacket, e := parse.parsePacket(conn); e != nil {
+		parse.release(conn, true)
+		return e
+	} else {
+		err = parse.checkError(resPacket.statusOrVbucket)
+	}
+
+	parse.release(conn, false)
+
+	return
+}
+
+func (parse *BinaryPorotolParse) Deletion(key string) (err error) {
+	// get a connect from the pool
+	var conn *common.Conn
+
+	if conn, err = parse.pool.Get(key); err != nil {
+		return
+	}
+
+	reqPacket := &packet{
+		magic           : resMagic,
+		opcode          : Delete,
+		keyLength       : uint16(len(key)),
+		totalBodyLength : uint32(len(key)),
+		key             : []byte(key),
+	}
+
+	if err = parse.fillPacket(reqPacket, conn); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if err = conn.Flush(); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if resPacket, e := parse.parsePacket(conn); e != nil {
+		parse.release(conn, true)
+		return e
+	} else {
+		err = parse.checkError(resPacket.statusOrVbucket)
+	}
+
+	parse.release(conn, false)
+
+	return
+}
+
+func (parse *BinaryPorotolParse) IncrOrDecr(opr uint8, key string, value uint64, exptime uint32) (v uint64, err error) {
+	// get a connect from the pool
+	var conn *common.Conn
+
+	if conn, err = parse.pool.Get(key); err != nil {
+		return
+	}
+
+	reqPacket := &packet{
+		magic : resMagic,
+		opcode : opr,
+		keyLength : uint16(len(key)),
+		extrasLength : 20,
+		key : []byte(key),
+	}
+	reqPacket.totalBodyLength = uint32(reqPacket.keyLength) + uint32(reqPacket.extrasLength) + uint32(len(reqPacket.value))
+	reqPacket.extras          = make([]byte, reqPacket.extrasLength)
+	binary.BigEndian.PutUint64(reqPacket.extras[:8],   value)
+	binary.BigEndian.PutUint64(reqPacket.extras[8:16], 0)
+	binary.BigEndian.PutUint32(reqPacket.extras[16:],  exptime)
+
+	if err = parse.fillPacket(reqPacket, conn); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if err = conn.Flush(); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if resPacket, e := parse.parsePacket(conn); e != nil {
+		parse.release(conn, true)
+		err = e
+		return
+	} else {
+		if err = parse.checkError(resPacket.statusOrVbucket); err == nil {
+			v = binary.BigEndian.Uint64(resPacket.value)
+		}
+	}
+
+	parse.release(conn, false)
 
 	return
 }

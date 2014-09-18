@@ -158,6 +158,6 @@ func (client *MemcachedClient4T) Decr(key string, value uint64) (uint64, error) 
 }
 
 // Touch update the expiration time of an existing item without fetching it
-func (client *MemcachedClient4T) Touch(key string, exptime int64) error {
+func (client *MemcachedClient4T) Touch(key string, exptime uint32) error {
 	return client.parse.Touch(key, exptime)
 }

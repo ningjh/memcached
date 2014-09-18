@@ -5,7 +5,7 @@ package common
 type Element struct {
 	Key     string
 	Flags   uint32
-	Exptime int64 //seconds
+	Exptime uint32 //seconds
 	Cas     uint64
 	Value   []byte
 }

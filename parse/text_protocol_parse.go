@@ -27,7 +27,7 @@ func NewTextProtocolParse(p pool.Pool, c *config.Config) *TextProtocolParse {
 }
 
 // Store ask the server to store some data identified by a key
-func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, exptime int64, cas uint64, value []byte) error {
+func (parse *TextProtocolParse) Store(opr string, key string, flags uint32, exptime uint32, cas uint64, value []byte) error {
 	// get a connect from the pool
 	conn, err := parse.pool.Get(key)
 	if err != nil {
@@ -245,7 +245,7 @@ func (parse *TextProtocolParse) IncrOrDecr(opr string, key string, value uint64)
 }
 
 // Touch touch an item
-func (parse *TextProtocolParse) Touch(key string, exptime int64) error {
+func (parse *TextProtocolParse) Touch(key string, exptime uint32) error {
 	// get a connect from the pool
 	conn, err := parse.pool.Get(key)
 	if err != nil {
