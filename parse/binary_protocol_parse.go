@@ -423,3 +423,83 @@ func (parse *BinaryPorotolParse) IncrOrDecr(opr uint8, key string, value uint64,
 
 	return
 }
+
+func (parse *BinaryPorotolParse) AppendOrPrepend(opr uint8, key string, value []byte) (err error) {
+	// get a connect from the pool
+	var conn *common.Conn
+
+	if conn, err = parse.pool.Get(key); err != nil {
+		return
+	}
+
+	reqPacket := &packet{
+		magic       : resMagic,
+		opcode      : opr,
+		keyLength   : uint16(len(key)),
+		key         : []byte(key),
+		value       : value,
+	}
+	reqPacket.totalBodyLength = uint32(reqPacket.keyLength) + uint32(reqPacket.extrasLength) + uint32(len(reqPacket.value))
+
+	if err = parse.fillPacket(reqPacket, conn); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if err = conn.Flush(); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if resPacket, e := parse.parsePacket(conn); e != nil {
+		parse.release(conn, true)
+		return e
+	} else {
+		err = parse.checkError(resPacket.statusOrVbucket)
+	}
+
+	parse.release(conn, false)
+
+	return
+}
+
+func (parse *BinaryPorotolParse) Touch(key string, exptime uint32) (err error) {
+	// get a connect from the pool
+	var conn *common.Conn
+
+	if conn, err = parse.pool.Get(key); err != nil {
+		return
+	}
+
+	reqPacket := &packet{
+		magic        : resMagic,
+		opcode       : Touch,
+		keyLength    : uint16(len(key)),
+		extrasLength : 4,
+		key          : []byte(key),
+	}
+	reqPacket.totalBodyLength = uint32(reqPacket.keyLength) + uint32(reqPacket.extrasLength) + uint32(len(reqPacket.value))
+	reqPacket.extras          = make([]byte, reqPacket.extrasLength)
+	binary.BigEndian.PutUint32(reqPacket.extras, exptime)
+
+	if err = parse.fillPacket(reqPacket, conn); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if err = conn.Flush(); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if resPacket, e := parse.parsePacket(conn); e != nil {
+		parse.release(conn, true)
+		return e
+	} else {
+		err = parse.checkError(resPacket.statusOrVbucket)
+	}
+
+	parse.release(conn, false)
+
+	return
+}
