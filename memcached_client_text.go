@@ -33,6 +33,8 @@ func NewMemcachedClient4T(c *config.Config) (*MemcachedClient4T, error) {
 		c.RefreshHashIntervalInSecond = 10
 	}
 
+	c.TextOrBinary = 0
+
 	p, err := pool.New(c)
 	if err != nil {
 		return nil, err

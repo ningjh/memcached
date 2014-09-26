@@ -92,10 +92,24 @@ func (c *Conn) Connected() bool {
 		return false
 	}
 
-	if _, err := c.Write([]byte("version\r\n")); err == nil {
-		c.ReadString('\n')
-		return true
+	var b bool = false
+
+	if c.config.TextOrBinary == 0 {
+		if _, err := c.Write([]byte("version\r\n")); err == nil {
+			c.ReadString('\n')
+			b = true
+		}
 	} else {
-		return false
+		data := make([]byte, 25)
+		data[0]  = 0x80
+		data[1]  = 0x09
+		data[3]  = 0x01
+		data[11] = 0x01
+		data[24] = 'a'
+		if _, err := c.Write(data); err == nil {
+			b = true
+		}
 	}
+
+	return b
 }

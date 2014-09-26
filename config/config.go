@@ -8,6 +8,7 @@ type Config struct {
 	WriteTimeout                int64    //Millisecond
 	NumberOfReplicas            int      //number of replicas of each memcached server
 	RefreshHashIntervalInSecond int
+	TextOrBinary                int
 }
 
 func New() *Config {

@@ -305,7 +305,7 @@ func (parse *BinaryPorotolParse) Store(opr uint8, key string, flags uint32, expt
 	}
 
 	reqPacket := &packet{
-		magic       : resMagic,
+		magic       : reqMagic,
 		opcode      : opr,
 		keyLength   : uint16(len(key)),
 		extrasLength: 8,
@@ -349,7 +349,7 @@ func (parse *BinaryPorotolParse) Deletion(key string) (err error) {
 	}
 
 	reqPacket := &packet{
-		magic           : resMagic,
+		magic           : reqMagic,
 		opcode          : Delete,
 		keyLength       : uint16(len(key)),
 		totalBodyLength : uint32(len(key)),
@@ -387,7 +387,7 @@ func (parse *BinaryPorotolParse) IncrOrDecr(opr uint8, key string, value uint64,
 	}
 
 	reqPacket := &packet{
-		magic : resMagic,
+		magic : reqMagic,
 		opcode : opr,
 		keyLength : uint16(len(key)),
 		extrasLength : 20,
@@ -433,7 +433,7 @@ func (parse *BinaryPorotolParse) AppendOrPrepend(opr uint8, key string, value []
 	}
 
 	reqPacket := &packet{
-		magic       : resMagic,
+		magic       : reqMagic,
 		opcode      : opr,
 		keyLength   : uint16(len(key)),
 		key         : []byte(key),
@@ -472,7 +472,7 @@ func (parse *BinaryPorotolParse) Touch(key string, exptime uint32) (err error) {
 	}
 
 	reqPacket := &packet{
-		magic        : resMagic,
+		magic        : reqMagic,
 		opcode       : Touch,
 		keyLength    : uint16(len(key)),
 		extrasLength : 4,
