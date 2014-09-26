@@ -64,7 +64,7 @@ func main() {
     keys  := []string{"abc", "def", "ghi"}
     items, err := memcachedClient.GetArray(keys)
     if err == nil {
-        for _, key := range items {
+        for _, key := range keys {
             if item, ok := items[key]; ok {
                 key   := item.Key()
                 value := item.Value()
