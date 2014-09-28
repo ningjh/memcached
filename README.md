@@ -3,7 +3,7 @@
 ##简介
     这是一个用Go语言实现的Memcached客户端。主要有以下特性：
     
-    1. 实现了Memcached的文本协议（二进制协议稍后会实现）。
+    1. 实现了Memcached的文本协议和二进制协议。
     2. 使用了连接池，复用TCP连接。
     3. 实现了Consistent Hashing，如Cache服务器宕机，能够使得影响降到最低。
 
@@ -36,8 +36,12 @@ func main() {
     conf.InitConns        = 15   //配置连接池最大容量（默认为15）
     conf.NumberOfReplicas = 20   //配置Cache服务器的虚拟节点数量（默认为20）
 
-    // 创建客户端实例
+    // 使用文本协议客户端(二选一)
     var client, err = memcached.NewMemcachedClient4T(conf)
+    
+    // 使用二进制协议客户端(二选一)
+    var client, err = memcached.NewMemcachedClient4B(conf)
+    
     if err != nil {
         return
     }
@@ -75,8 +79,11 @@ func main() {
     }
 }
 ```
-[更多用例]
-[更多用例]: https://github.com/ningjh/memcached/blob/master/test/memcached_client_test.go "更多用例"
+[文本协议 更多用例]
+[文本协议 更多用例]: https://github.com/ningjh/memcached/blob/master/test/memcached_client_test.go "文本协议 更多用例"
+
+[二进制协议 更多用例]
+[二进制协议 更多用例]: https://github.com/ningjh/memcached/blob/master/test/memcached_binary_client_test.go "二进制协议 更多用例"
 
 ##文档
 [文档]
