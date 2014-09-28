@@ -132,12 +132,6 @@ func TestCas(t *testing.T) {
 		t.Errorf("%s", err)
 	}
 }
-/*
-func TestDelete(t *testing.T) {
-	if err := clientT.Delete("test1"); err != nil {
-		t.Errorf("%s", err)
-	}
-}*/
 
 func TestIncr(t *testing.T) {
 	if v, err := clientT.Incr("test2", 5); err != nil {
@@ -154,9 +148,15 @@ func TestDecr(t *testing.T) {
 		t.Logf("%d", v)
 	}
 }
-/*
+
 func TestTouch(t *testing.T) {
 	if err := clientT.Touch("test2", 500); err != nil {
 		t.Errorf("%s", err)
 	}
-}*/
+}
+
+func TestDelete(t *testing.T) {
+	if err := clientT.Delete("test1"); err != nil {
+		t.Errorf("%s", err)
+	}
+}

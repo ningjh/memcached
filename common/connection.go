@@ -87,19 +87,20 @@ func (c *Conn) Close() {
 	c.config = nil
 }
 
+// Connected check whether the connection is available.
 func (c *Conn) Connected() bool {
-	if c.Conn == nil {
-		return false
-	}
-
 	var b bool = false
 
-	if c.config.TextOrBinary == 0 {
+	if c.Conn == nil {
+		return b
+	}
+
+	if c.config.TextOrBinary == 0 { // text protocol
 		if _, err := c.Write([]byte("version\r\n")); err == nil {
 			c.ReadString('\n')
 			b = true
 		}
-	} else {
+	} else {                        // binary protocol
 		data := make([]byte, 25)
 		data[0]  = 0x80
 		data[1]  = 0x09

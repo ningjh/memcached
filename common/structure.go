@@ -12,9 +12,9 @@ type Element struct {
 
 // Item is a interface storage data return by get or gets command.
 type Item interface {
-	Key() string
+	Key()   string
 	Value() []byte
-	Cas() uint64
+	Cas()   uint64
 	Flags() uint32
 }
 

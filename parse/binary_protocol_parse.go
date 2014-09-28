@@ -100,6 +100,7 @@ func (parse *BinaryPorotolParse) checkError(status uint16) (err error) {
 	return
 }
 
+// fillPacket fill the send packet and write the packet to buffer.
 func (parse *BinaryPorotolParse) fillPacket(p *packet, conn *common.Conn) (err error) {
 	var header []byte = make([]byte, headerLen)
 	var i      int
@@ -124,6 +125,7 @@ func (parse *BinaryPorotolParse) fillPacket(p *packet, conn *common.Conn) (err e
 	return
 }
 
+// parsePacket parse the response packet from serer.
 func (parse *BinaryPorotolParse) parsePacket(conn *common.Conn) (p *packet, err error) {
 	var header []byte = make([]byte, headerLen)
 	var i, n   int
@@ -295,12 +297,32 @@ func (parse *BinaryPorotolParse) Retrieval(keys []string) (items map[string]comm
 	return
 }
 
+func (parse *BinaryPorotolParse) requestAndResponse(conn *common.Conn, reqPacket *packet) (resPacket *packet, err error) {
+	if err = parse.fillPacket(reqPacket, conn); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if err = conn.Flush(); err != nil {
+		parse.release(conn, true)
+		return
+	}
+
+	if resPacket, err = parse.parsePacket(conn); err != nil {
+		parse.release(conn, true)
+		return
+	} else {
+		err = parse.checkError(resPacket.statusOrVbucket)
+		parse.release(conn, false)
+	}
+
+	return
+}
+
 // Set, Add, Replace
 func (parse *BinaryPorotolParse) Store(opr uint8, key string, flags uint32, exptime uint32, cas uint64, value []byte) (err error) {
-	// get a connect from the pool
-	var conn *common.Conn
-
-	if conn, err = parse.pool.Get(key); err != nil {
+	conn, err := parse.pool.Get(key)
+	if err != nil {
 		return
 	}
 
@@ -318,33 +340,14 @@ func (parse *BinaryPorotolParse) Store(opr uint8, key string, flags uint32, expt
 	binary.BigEndian.PutUint32(reqPacket.extras[:4], flags)
 	binary.BigEndian.PutUint32(reqPacket.extras[4:], exptime)
 
-	if err = parse.fillPacket(reqPacket, conn); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if err = conn.Flush(); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if resPacket, e := parse.parsePacket(conn); e != nil {
-		parse.release(conn, true)
-		return e
-	} else {
-		err = parse.checkError(resPacket.statusOrVbucket)
-	}
-
-	parse.release(conn, false)
+	_, err = parse.requestAndResponse(conn, reqPacket)
 
 	return
 }
 
 func (parse *BinaryPorotolParse) Deletion(key string) (err error) {
-	// get a connect from the pool
-	var conn *common.Conn
-
-	if conn, err = parse.pool.Get(key); err != nil {
+	conn, err := parse.pool.Get(key)
+	if err != nil {
 		return
 	}
 
@@ -356,33 +359,14 @@ func (parse *BinaryPorotolParse) Deletion(key string) (err error) {
 		key             : []byte(key),
 	}
 
-	if err = parse.fillPacket(reqPacket, conn); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if err = conn.Flush(); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if resPacket, e := parse.parsePacket(conn); e != nil {
-		parse.release(conn, true)
-		return e
-	} else {
-		err = parse.checkError(resPacket.statusOrVbucket)
-	}
-
-	parse.release(conn, false)
+	_, err = parse.requestAndResponse(conn, reqPacket)
 
 	return
 }
 
 func (parse *BinaryPorotolParse) IncrOrDecr(opr uint8, key string, value uint64, exptime uint32) (v uint64, err error) {
-	// get a connect from the pool
-	var conn *common.Conn
-
-	if conn, err = parse.pool.Get(key); err != nil {
+	conn, err := parse.pool.Get(key)
+	if err != nil {
 		return
 	}
 
@@ -399,36 +383,17 @@ func (parse *BinaryPorotolParse) IncrOrDecr(opr uint8, key string, value uint64,
 	binary.BigEndian.PutUint64(reqPacket.extras[8:16], 0)
 	binary.BigEndian.PutUint32(reqPacket.extras[16:],  exptime)
 
-	if err = parse.fillPacket(reqPacket, conn); err != nil {
-		parse.release(conn, true)
-		return
+	resPacket, err := parse.requestAndResponse(conn, reqPacket)
+	if err == nil {
+		v = binary.BigEndian.Uint64(resPacket.value)
 	}
-
-	if err = conn.Flush(); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if resPacket, e := parse.parsePacket(conn); e != nil {
-		parse.release(conn, true)
-		err = e
-		return
-	} else {
-		if err = parse.checkError(resPacket.statusOrVbucket); err == nil {
-			v = binary.BigEndian.Uint64(resPacket.value)
-		}
-	}
-
-	parse.release(conn, false)
 
 	return
 }
 
 func (parse *BinaryPorotolParse) AppendOrPrepend(opr uint8, key string, value []byte) (err error) {
-	// get a connect from the pool
-	var conn *common.Conn
-
-	if conn, err = parse.pool.Get(key); err != nil {
+	conn, err := parse.pool.Get(key)
+	if err != nil {
 		return
 	}
 
@@ -441,33 +406,14 @@ func (parse *BinaryPorotolParse) AppendOrPrepend(opr uint8, key string, value []
 	}
 	reqPacket.totalBodyLength = uint32(reqPacket.keyLength) + uint32(reqPacket.extrasLength) + uint32(len(reqPacket.value))
 
-	if err = parse.fillPacket(reqPacket, conn); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if err = conn.Flush(); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if resPacket, e := parse.parsePacket(conn); e != nil {
-		parse.release(conn, true)
-		return e
-	} else {
-		err = parse.checkError(resPacket.statusOrVbucket)
-	}
-
-	parse.release(conn, false)
+	_, err = parse.requestAndResponse(conn, reqPacket)
 
 	return
 }
 
 func (parse *BinaryPorotolParse) Touch(key string, exptime uint32) (err error) {
-	// get a connect from the pool
-	var conn *common.Conn
-
-	if conn, err = parse.pool.Get(key); err != nil {
+	conn, err := parse.pool.Get(key)
+	if err != nil {
 		return
 	}
 
@@ -482,24 +428,7 @@ func (parse *BinaryPorotolParse) Touch(key string, exptime uint32) (err error) {
 	reqPacket.extras          = make([]byte, reqPacket.extrasLength)
 	binary.BigEndian.PutUint32(reqPacket.extras, exptime)
 
-	if err = parse.fillPacket(reqPacket, conn); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if err = conn.Flush(); err != nil {
-		parse.release(conn, true)
-		return
-	}
-
-	if resPacket, e := parse.parsePacket(conn); e != nil {
-		parse.release(conn, true)
-		return e
-	} else {
-		err = parse.checkError(resPacket.statusOrVbucket)
-	}
-
-	parse.release(conn, false)
+	_, err = parse.requestAndResponse(conn, reqPacket)
 
 	return
 }
